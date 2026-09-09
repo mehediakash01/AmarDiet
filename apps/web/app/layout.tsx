@@ -1,18 +1,31 @@
+import './globals.css';
 import type { Metadata } from 'next';
+import { Navbar } from '../components/Navbar.js';
+import { FoodSearchModal } from '../features/food-search/FoodSearchModal.js';
 
 export const metadata: Metadata = {
   title: {
     template: '%s | Thali Tracker',
-    default: 'Thali Tracker',
+    default: 'Thali Tracker — Personalized Diet & Macro Engine',
   },
   description:
-    'Personalized diet and macro tracking — log meals, hit your goals, your way.',
+    'Local-first personalized diet and macro tracking across Bengali, Western, and packaged foods.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-background text-dark min-h-screen flex flex-col font-sans">
+        <Navbar />
+        <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">
+          {children}
+        </main>
+        <FoodSearchModal />
+      </body>
     </html>
   );
 }

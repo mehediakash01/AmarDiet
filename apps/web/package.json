@@ -11,17 +11,25 @@
   },
   "dependencies": {
     "@thali/domain": "workspace:*",
+    "@thali/food-data": "workspace:*",
     "@thali/nutrition-engine": "workspace:*",
     "@thali/schemas": "workspace:*",
     "@thali/types": "workspace:*",
+    "dexie": "^4.4.5",
+    "dexie-react-hooks": "^4.4.0",
+    "lucide-react": "^1.43.0",
     "next": "^14.2.14",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/node": "^22.5.5",
     "@types/react": "^18.3.8",
     "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.5.5",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.5.4"
   }
 }
