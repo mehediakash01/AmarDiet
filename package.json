@@ -5,7 +5,9 @@
   "scripts": {
     "build": "pnpm --recursive --sort run build",
     "typecheck": "pnpm --recursive --sort run typecheck",
-    "test": "pnpm --filter @thali/nutrition-engine test",
+    "test": "pnpm --filter @thali/nutrition-engine test && pnpm --filter @thali/api test",
+    "test:unit": "pnpm --filter @thali/nutrition-engine test",
+    "test:integration": "pnpm --filter @thali/api test",
     "validate:food": "tsx scripts/validate-food-data.ts",
     "lint": "eslint .",
     "format": "prettier --write .",

@@ -6,14 +6,20 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "node --watch dist/index.js",
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
     "@thali/domain": "workspace:*",
     "@thali/nutrition-engine": "workspace:*",
     "@thali/schemas": "workspace:*",
-    "@thali/types": "workspace:*"
+    "@thali/types": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.3",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/node": "^22.5.5",

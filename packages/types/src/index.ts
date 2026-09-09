@@ -28,10 +28,9 @@ export interface FoodItem {
 
 export type ActivityLevel =
   | 'sedentary'
-  | 'light'
-  | 'moderate'
-  | 'very_active'
-  | 'extra_active';
+  | 'lightly_active'
+  | 'active'
+  | 'very_active';
 
 export type Goal =
   | 'lose_weight'
@@ -44,4 +43,43 @@ export type Sex = 'male' | 'female';
 export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 export type CuisinePreference = 'bengali' | 'mixed' | 'western';
+
+export interface Subscriber {
+  id: string;
+  phone?: string;
+  status: 'active' | 'inactive' | 'suspended';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserProfile {
+  subscriberId: string;
+  age: number;
+  sex: Sex;
+  height_cm: number;
+  weight_kg: number;
+  activity_level: ActivityLevel;
+  goal: Goal;
+  target_weight_kg?: number;
+  dietary_preferences?: Record<string, unknown>;
+  cuisine_preference: CuisinePreference;
+  updated_at: string;
+}
+
+export interface NutritionTargets {
+  bmr: number;
+  tdee: number;
+  calorieTarget: number;
+  macros: {
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+  };
+  safetyFloorApplied: boolean;
+}
+
+export interface ProfileWithNutrition {
+  profile: UserProfile;
+  nutrition: NutritionTargets;
+}
 

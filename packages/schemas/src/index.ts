@@ -26,3 +26,72 @@ export const FoodItemSchema = z.object({
 export type FoodItemInput = z.infer<typeof FoodItemSchema>;
 export type CommonServingInput = z.infer<typeof CommonServingSchema>;
 
+// Subscriber Schemas
+export const CreateSubscriberSchema = z.object({
+  id: z.string().uuid().optional(),
+  phone: z.string().min(5).max(20).optional(),
+});
+
+export const SubscriberSchema = z.object({
+  id: z.string(),
+  phone: z.string().optional(),
+  status: z.enum(['active', 'inactive', 'suspended']),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type CreateSubscriberInput = z.infer<typeof CreateSubscriberSchema>;
+export type SubscriberOutput = z.infer<typeof SubscriberSchema>;
+
+// Profile Schemas
+export const SexSchema = z.enum(['male', 'female']);
+export const ActivityLevelSchema = z.enum([
+  'sedentary',
+  'lightly_active',
+  'active',
+  'very_active',
+]);
+export const GoalSchema = z.enum([
+  'lose_weight',
+  'maintain',
+  'gain_weight',
+  'build_muscle',
+]);
+export const CuisinePreferenceSchema = z.enum(['bengali', 'mixed', 'western']);
+
+export const SaveProfileSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  age: z.number().int().min(10, 'Age must be at least 10').max(120, 'Age must be at most 120'),
+  sex: SexSchema,
+  height_cm: z.number().positive('height_cm must be positive').max(300, 'height_cm must be realistic'),
+  weight_kg: z.number().positive('weight_kg must be positive').max(500, 'weight_kg must be realistic'),
+  activity_level: ActivityLevelSchema,
+  goal: GoalSchema,
+  target_weight_kg: z.number().positive('target_weight_kg must be positive').optional(),
+  dietary_preferences: z.record(z.unknown()).optional(),
+  cuisine_preference: CuisinePreferenceSchema.default('mixed'),
+});
+
+export type SaveProfileInput = z.infer<typeof SaveProfileSchema>;
+
+export const NutritionTargetsSchema = z.object({
+  bmr: z.number(),
+  tdee: z.number(),
+  calorieTarget: z.number(),
+  macros: z.object({
+    protein_g: z.number(),
+    carbs_g: z.number(),
+    fat_g: z.number(),
+  }),
+  safetyFloorApplied: z.boolean(),
+});
+
+export const ProfileWithNutritionSchema = z.object({
+  profile: SaveProfileSchema.extend({
+    updated_at: z.string(),
+  }),
+  nutrition: NutritionTargetsSchema,
+});
+
+export type ProfileWithNutritionOutput = z.infer<typeof ProfileWithNutritionSchema>;
+
