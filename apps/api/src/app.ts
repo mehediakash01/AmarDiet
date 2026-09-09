@@ -15,10 +15,21 @@ import {
 } from './modules/profile/profile.repository.js';
 import { ProfileService } from './modules/profile/profile.service.js';
 import { profileRoutes } from './modules/profile/profile.routes.js';
+import { FoodService } from './modules/food/food.service.js';
+import { foodRoutes } from './modules/food/food.routes.js';
+import {
+  type IFoodLogRepository,
+  DrizzleFoodLogRepository,
+  InMemoryFoodLogRepository,
+} from './modules/food-log/food-log.repository.js';
+import { FoodLogService } from './modules/food-log/food-log.service.js';
+import { foodLogRoutes } from './modules/food-log/food-log.routes.js';
 
 export interface AppOptions {
   subscriberRepo?: ISubscriberRepository;
   profileRepo?: IProfileRepository;
+  foodLogRepo?: IFoodLogRepository;
+  foodService?: FoodService;
   databaseUrl?: string;
   logger?: boolean;
 }
@@ -44,23 +55,30 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
 
   let subscriberRepo = options.subscriberRepo;
   let profileRepo = options.profileRepo;
+  let foodLogRepo = options.foodLogRepo;
 
-  if (!subscriberRepo || !profileRepo) {
+  if (!subscriberRepo || !profileRepo || !foodLogRepo) {
     const db = getDatabase(options.databaseUrl);
     if (db) {
       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
       profileRepo = profileRepo || new DrizzleProfileRepository(db);
+      foodLogRepo = foodLogRepo || new DrizzleFoodLogRepository(db);
     } else {
       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
       profileRepo = profileRepo || new InMemoryProfileRepository();
+      foodLogRepo = foodLogRepo || new InMemoryFoodLogRepository();
     }
   }
 
   const subscriberService = new SubscriberService(subscriberRepo);
   const profileService = new ProfileService(profileRepo, subscriberRepo);
+  const foodService = options.foodService || new FoodService();
+  const foodLogService = new FoodLogService(foodLogRepo, foodService);
 
   await app.register(subscriberRoutes(subscriberService));
   await app.register(profileRoutes(profileService));
+  await app.register(foodRoutes(foodService));
+  await app.register(foodLogRoutes(foodLogService));
 
   return app;
 }

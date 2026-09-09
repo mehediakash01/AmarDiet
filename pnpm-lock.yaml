@@ -35,6 +35,9 @@ importers:
       '@thali/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@thali/food-data':
+        specifier: workspace:*
+        version: link:../../packages/food-data
       '@thali/nutrition-engine':
         specifier: workspace:*
         version: link:../../packages/nutrition-engine

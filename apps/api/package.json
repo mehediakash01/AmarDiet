@@ -14,6 +14,7 @@
   "dependencies": {
     "@fastify/cors": "^11.3.0",
     "@thali/domain": "workspace:*",
+    "@thali/food-data": "workspace:*",
     "@thali/nutrition-engine": "workspace:*",
     "@thali/schemas": "workspace:*",
     "@thali/types": "workspace:*",

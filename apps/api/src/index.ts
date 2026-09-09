@@ -8,6 +8,11 @@ export * from './modules/subscriber/subscriber.routes.js';
 export * from './modules/profile/profile.repository.js';
 export * from './modules/profile/profile.service.js';
 export * from './modules/profile/profile.routes.js';
+export * from './modules/food/food.service.js';
+export * from './modules/food/food.routes.js';
+export * from './modules/food-log/food-log.repository.js';
+export * from './modules/food-log/food-log.service.js';
+export * from './modules/food-log/food-log.routes.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';

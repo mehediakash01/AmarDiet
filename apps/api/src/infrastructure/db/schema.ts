@@ -46,3 +46,25 @@ export type NewSubscriberRow = typeof subscribers.$inferInsert;
 
 export type ProfileRow = typeof profiles.$inferSelect;
 export type NewProfileRow = typeof profiles.$inferInsert;
+
+/**
+ * Food Logs table — per-meal item tracking
+ */
+export const foodLogs = pgTable('food_logs', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  subscriberId: varchar('subscriber_id', { length: 64 })
+    .notNull()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  loggedOn: varchar('logged_on', { length: 16 }).notNull(), // YYYY-MM-DD
+  mealSlot: varchar('meal_slot', { length: 16 }).notNull(), // breakfast | lunch | dinner | snack
+  foodId: varchar('food_id', { length: 64 }).notNull(),
+  foodName: varchar('food_name', { length: 256 }),
+  quantity: doublePrecision('quantity').notNull(),
+  unit: varchar('unit', { length: 64 }).notNull().default('g'),
+  calculatedNutrition: jsonb('calculated_nutrition').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type FoodLogRow = typeof foodLogs.$inferSelect;
+export type NewFoodLogRow = typeof foodLogs.$inferInsert;

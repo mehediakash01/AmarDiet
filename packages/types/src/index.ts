@@ -83,3 +83,38 @@ export interface ProfileWithNutrition {
   nutrition: NutritionTargets;
 }
 
+export interface CalculatedNutrition {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+}
+
+export interface FoodLogEntry {
+  id: string;
+  subscriberId: string;
+  loggedOn: string; // YYYY-MM-DD
+  mealSlot: MealSlot;
+  foodId: string;
+  foodName?: string;
+  quantity: number;
+  unit: string;
+  calculatedNutrition: CalculatedNutrition;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MealSlotGroup {
+  mealSlot: MealSlot;
+  items: FoodLogEntry[];
+  subtotal: CalculatedNutrition;
+}
+
+export interface DailyFoodDiary {
+  subscriberId: string;
+  date: string;
+  meals: Record<MealSlot, MealSlotGroup>;
+  totals: CalculatedNutrition;
+}
+

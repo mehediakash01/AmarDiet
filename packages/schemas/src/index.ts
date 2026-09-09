@@ -95,3 +95,49 @@ export const ProfileWithNutritionSchema = z.object({
 
 export type ProfileWithNutritionOutput = z.infer<typeof ProfileWithNutritionSchema>;
 
+// Food Log Schemas
+export const MealSlotSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack']);
+
+export const CalculatedNutritionSchema = z.object({
+  calories: z.number().nonnegative(),
+  protein: z.number().nonnegative(),
+  carbs: z.number().nonnegative(),
+  fat: z.number().nonnegative(),
+  fiber: z.number().nonnegative(),
+});
+
+export const CreateFoodLogSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  loggedOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'loggedOn must be YYYY-MM-DD format'),
+  mealSlot: MealSlotSchema,
+  foodId: z.string().min(1, 'foodId is required'),
+  quantity: z.number().positive('quantity must be positive'),
+  unit: z.string().min(1, 'unit is required').default('g'),
+});
+
+export const PatchFoodLogSchema = z.object({
+  quantity: z.number().positive('quantity must be positive').optional(),
+  unit: z.string().min(1).optional(),
+  mealSlot: MealSlotSchema.optional(),
+});
+
+export const FoodLogQuerySchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD format'),
+});
+
+export const FoodSearchQuerySchema = z.object({
+  q: z.string().optional().default(''),
+  cuisinePreference: CuisinePreferenceSchema.optional(),
+  limit: z.coerce.number().int().positive().max(100).optional().default(50),
+});
+
+export type CreateFoodLogInput = z.infer<typeof CreateFoodLogSchema>;
+export type PatchFoodLogInput = z.infer<typeof PatchFoodLogSchema>;
+export type FoodLogQueryInput = z.infer<typeof FoodLogQuerySchema>;
+export type FoodSearchQueryInput = z.infer<typeof FoodSearchQuerySchema>;
+
