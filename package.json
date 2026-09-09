@@ -1,0 +1,22 @@
+{
+  "name": "thali-tracker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --recursive --sort run build",
+    "typecheck": "pnpm --recursive --sort run typecheck",
+    "test": "pnpm --filter @thali/nutrition-engine test",
+    "validate:food": "tsx scripts/validate-food-data.ts",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "globals": "^15.9.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.1",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.7.0"
+  }
+}

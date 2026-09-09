@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js and build output
+.next/
+out/
+dist/
+build/
+.vercel/
+.turbo/
+.cache/
+
+# Test and coverage output
+coverage/
+playwright-report/
+test-results/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and local databases
+*.log
+*-debug.log*
+*-error.log*
+*.sqlite
+*.sqlite3
+*.db
+*.pem
+
+# TypeScript build metadata
+*.tsbuildinfo
+
+# Tool and editor files
+.eslintcache
+.DS_Store
+Thumbs.db
+.vscode/
