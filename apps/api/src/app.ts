@@ -24,11 +24,19 @@ import {
 } from './modules/food-log/food-log.repository.js';
 import { FoodLogService } from './modules/food-log/food-log.service.js';
 import { foodLogRoutes } from './modules/food-log/food-log.routes.js';
+import {
+  type IDietPlanRepository,
+  DrizzleDietPlanRepository,
+  InMemoryDietPlanRepository,
+} from './modules/diet-plan/diet-plan.repository.js';
+import { DietPlanService } from './modules/diet-plan/diet-plan.service.js';
+import { dietPlanRoutes } from './modules/diet-plan/diet-plan.routes.js';
 
 export interface AppOptions {
   subscriberRepo?: ISubscriberRepository;
   profileRepo?: IProfileRepository;
   foodLogRepo?: IFoodLogRepository;
+  dietPlanRepo?: IDietPlanRepository;
   foodService?: FoodService;
   databaseUrl?: string;
   logger?: boolean;
@@ -56,17 +64,20 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   let subscriberRepo = options.subscriberRepo;
   let profileRepo = options.profileRepo;
   let foodLogRepo = options.foodLogRepo;
+  let dietPlanRepo = options.dietPlanRepo;
 
-  if (!subscriberRepo || !profileRepo || !foodLogRepo) {
+  if (!subscriberRepo || !profileRepo || !foodLogRepo || !dietPlanRepo) {
     const db = getDatabase(options.databaseUrl);
     if (db) {
       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
       profileRepo = profileRepo || new DrizzleProfileRepository(db);
       foodLogRepo = foodLogRepo || new DrizzleFoodLogRepository(db);
+      dietPlanRepo = dietPlanRepo || new DrizzleDietPlanRepository(db);
     } else {
       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
       profileRepo = profileRepo || new InMemoryProfileRepository();
       foodLogRepo = foodLogRepo || new InMemoryFoodLogRepository();
+      dietPlanRepo = dietPlanRepo || new InMemoryDietPlanRepository();
     }
   }
 
@@ -74,11 +85,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const profileService = new ProfileService(profileRepo, subscriberRepo);
   const foodService = options.foodService || new FoodService();
   const foodLogService = new FoodLogService(foodLogRepo, foodService);
+  const dietPlanService = new DietPlanService(dietPlanRepo, profileService, foodService);
 
   await app.register(subscriberRoutes(subscriberService));
   await app.register(profileRoutes(profileService));
   await app.register(foodRoutes(foodService));
   await app.register(foodLogRoutes(foodLogService));
+  await app.register(dietPlanRoutes(dietPlanService));
 
   return app;
 }

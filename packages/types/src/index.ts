@@ -118,3 +118,41 @@ export interface DailyFoodDiary {
   totals: CalculatedNutrition;
 }
 
+export interface DietPlanItem {
+  id?: string;
+  foodId: string;
+  foodName: string;
+  quantity: number;
+  unit: string;
+  calculatedNutrition: CalculatedNutrition;
+}
+
+export interface DietPlanMeal {
+  mealSlot: MealSlot;
+  items: DietPlanItem[];
+  isCustomized: boolean;
+  subtotal: CalculatedNutrition;
+  targetNutrition?: CalculatedNutrition;
+  deviationNote?: string;
+}
+
+export interface DietPlanDay {
+  day: string; // "Monday", "Tuesday", etc.
+  meals: DietPlanMeal[];
+  totals: CalculatedNutrition;
+}
+
+export interface DietPlan {
+  id: string;
+  subscriberId: string;
+  version: number;
+  calorieTarget: number;
+  proteinTarget_g: number;
+  carbsTarget_g: number;
+  fatTarget_g: number;
+  days: DietPlanDay[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+

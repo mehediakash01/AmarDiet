@@ -4,6 +4,13 @@
   "private": true,
   "scripts": {
     "build": "pnpm --recursive --sort run build",
+    "dev": "pnpm --parallel --filter @thali/api --filter @thali/web dev",
+    "dev:server": "pnpm --filter @thali/api dev",
+    "dev:client": "pnpm --filter @thali/web dev",
+    "dev:api": "pnpm --filter @thali/api dev",
+    "dev:web": "pnpm --filter @thali/web dev",
+    "start:server": "pnpm --filter @thali/api start",
+    "start:client": "pnpm --filter @thali/web start",
     "typecheck": "pnpm --recursive --sort run typecheck",
     "test": "pnpm --filter @thali/nutrition-engine test && pnpm --filter @thali/api test",
     "test:unit": "pnpm --filter @thali/nutrition-engine test",

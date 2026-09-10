@@ -68,3 +68,25 @@ export const foodLogs = pgTable('food_logs', {
 
 export type FoodLogRow = typeof foodLogs.$inferSelect;
 export type NewFoodLogRow = typeof foodLogs.$inferInsert;
+
+/**
+ * Diet Plans table — 7-day adaptive plan structure & per-meal customization state
+ */
+export const dietPlans = pgTable('diet_plans', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  subscriberId: varchar('subscriber_id', { length: 64 })
+    .notNull()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  version: integer('version').default(1).notNull(),
+  calorieTarget: doublePrecision('calorie_target').notNull(),
+  proteinTarget_g: doublePrecision('protein_target_g').notNull(),
+  carbsTarget_g: doublePrecision('carbs_target_g').notNull(),
+  fatTarget_g: doublePrecision('fat_target_g').notNull(),
+  planJson: jsonb('plan_json').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type DietPlanRow = typeof dietPlans.$inferSelect;
+export type NewDietPlanRow = typeof dietPlans.$inferInsert;
+

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Utensils, LayoutDashboard, BookOpen, Settings } from 'lucide-react';
+import { Utensils, LayoutDashboard, BookOpen, CalendarDays, Settings } from 'lucide-react';
 
 export function Navbar() {
   const pathname = usePathname();
@@ -10,6 +10,7 @@ export function Navbar() {
   const links = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/tracker', label: 'Diary', icon: BookOpen },
+    { href: '/plan', label: 'Diet Plan', icon: CalendarDays },
     { href: '/onboarding', label: 'Profile Setup', icon: Settings },
   ];
 

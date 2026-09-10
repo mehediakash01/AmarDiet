@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "dev": "next dev",
+    "run": "next dev",
     "start": "next start",
     "next:build": "next build"
   },

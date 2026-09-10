@@ -141,3 +141,70 @@ export type PatchFoodLogInput = z.infer<typeof PatchFoodLogSchema>;
 export type FoodLogQueryInput = z.infer<typeof FoodLogQuerySchema>;
 export type FoodSearchQueryInput = z.infer<typeof FoodSearchQuerySchema>;
 
+// Diet Plan Schemas
+export const DietPlanItemSchema = z.object({
+  id: z.string().optional(),
+  foodId: z.string().min(1, 'foodId is required'),
+  foodName: z.string().min(1, 'foodName is required'),
+  quantity: z.number().positive('quantity must be positive'),
+  unit: z.string().min(1, 'unit is required').default('g'),
+  calculatedNutrition: CalculatedNutritionSchema,
+});
+
+export const DietPlanMealSchema = z.object({
+  mealSlot: MealSlotSchema,
+  items: z.array(DietPlanItemSchema),
+  isCustomized: z.boolean().default(false),
+  subtotal: CalculatedNutritionSchema,
+  targetNutrition: CalculatedNutritionSchema.optional(),
+  deviationNote: z.string().optional(),
+});
+
+export const DietPlanDaySchema = z.object({
+  day: z.string().min(1, 'day is required'),
+  meals: z.array(DietPlanMealSchema),
+  totals: CalculatedNutritionSchema,
+});
+
+export const DietPlanSchema = z.object({
+  id: z.string(),
+  subscriberId: z.string(),
+  version: z.number().int().positive().default(1),
+  calorieTarget: z.number().positive(),
+  proteinTarget_g: z.number().nonnegative(),
+  carbsTarget_g: z.number().nonnegative(),
+  fatTarget_g: z.number().nonnegative(),
+  days: z.array(DietPlanDaySchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const GenerateDietPlanSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+});
+
+export const AddDietPlanItemSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  day: z.string().min(1, 'day is required'),
+  mealSlot: MealSlotSchema,
+  foodId: z.string().min(1, 'foodId is required'),
+  quantity: z.number().positive('quantity must be positive'),
+  unit: z.string().min(1).default('g'),
+});
+
+export const RemoveDietPlanItemSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  day: z.string().min(1, 'day is required'),
+  mealSlot: MealSlotSchema,
+  foodId: z.string().min(1, 'foodId is required'),
+  itemIndex: z.number().int().nonnegative().optional(),
+});
+
+export type DietPlanItemInput = z.infer<typeof DietPlanItemSchema>;
+export type DietPlanMealInput = z.infer<typeof DietPlanMealSchema>;
+export type DietPlanDayInput = z.infer<typeof DietPlanDaySchema>;
+export type DietPlanOutput = z.infer<typeof DietPlanSchema>;
+export type GenerateDietPlanInput = z.infer<typeof GenerateDietPlanSchema>;
+export type AddDietPlanItemInput = z.infer<typeof AddDietPlanItemSchema>;
+export type RemoveDietPlanItemInput = z.infer<typeof RemoveDietPlanItemSchema>;
+

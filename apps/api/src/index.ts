@@ -13,6 +13,9 @@ export * from './modules/food/food.routes.js';
 export * from './modules/food-log/food-log.repository.js';
 export * from './modules/food-log/food-log.service.js';
 export * from './modules/food-log/food-log.routes.js';
+export * from './modules/diet-plan/diet-plan.repository.js';
+export * from './modules/diet-plan/diet-plan.service.js';
+export * from './modules/diet-plan/diet-plan.routes.js';
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
