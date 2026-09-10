@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { Plus, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
-import { useNutritionStore } from '../../lib/store/useNutritionStore.js';
+import { useNutritionStore } from '../../lib/store/useNutritionStore';
 
 export default function TrackerPage() {
   const selectedDate = useNutritionStore((s) => s.selectedDate);

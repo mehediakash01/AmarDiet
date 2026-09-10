@@ -9,7 +9,7 @@ import {
   Sex,
   UserProfile,
 } from '@thali/types';
-import { useNutritionStore, computeLocalNutrition } from '../../lib/store/useNutritionStore.js';
+import { useNutritionStore, computeLocalNutrition } from '../../lib/store/useNutritionStore';
 import { Check, ArrowRight, ArrowLeft } from 'lucide-react';
 
 export function OnboardingFlow() {

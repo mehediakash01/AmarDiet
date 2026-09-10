@@ -15,12 +15,14 @@
     "test": "pnpm --filter @thali/nutrition-engine test && pnpm --filter @thali/api test",
     "test:unit": "pnpm --filter @thali/nutrition-engine test",
     "test:integration": "pnpm --filter @thali/api test",
+    "test:e2e": "playwright test",
     "validate:food": "tsx scripts/validate-food-data.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "eslint": "^9.0.0",
     "globals": "^15.9.0",
     "prettier": "^3.3.3",

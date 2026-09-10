@@ -11,8 +11,8 @@ import type {
   NutritionTargets,
   UserProfile,
 } from '@thali/types';
-import { db, type LocalFoodLogEntry } from '../db/db.js';
-import { syncEngine } from '../sync/syncEngine.js';
+import { db, type LocalFoodLogEntry } from '../db/db';
+import { syncEngine } from '../sync/syncEngine';
 import {
   calculateBMR,
   calculateTDEE,

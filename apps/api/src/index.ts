@@ -38,7 +38,13 @@ async function startServer() {
   }
 }
 
-// Auto-start if executed directly via Node
-if (process.argv[1] && process.argv[1].endsWith('index.js')) {
+// Auto-start if executed directly
+if (
+  process.argv[1] &&
+  (process.argv[1].endsWith('index.js') ||
+    process.argv[1].endsWith('index.ts') ||
+    process.argv[1].includes('src/index') ||
+    process.argv[1].includes('src\\index'))
+) {
   startServer();
 }

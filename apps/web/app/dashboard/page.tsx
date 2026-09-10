@@ -4,8 +4,8 @@ import React, { useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Plus, X, Utensils, Calendar, Settings } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
-import { useNutritionStore } from '../../lib/store/useNutritionStore.js';
-import { PlateRingChart } from '../../components/PlateRingChart.js';
+import { useNutritionStore } from '../../lib/store/useNutritionStore';
+import { PlateRingChart } from '../../components/PlateRingChart';
 
 export default function DashboardPage() {
   const profile = useNutritionStore((s) => s.profile);

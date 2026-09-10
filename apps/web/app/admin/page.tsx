@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, Check, UtensilsCrossed, ShieldAlert } from 'lucide-react';
 import type { FoodItem } from '@thali/types';
 import { FOOD_DATASET } from '@thali/food-data';
-import { db } from '../../lib/db/db.js';
+import { db } from '../../lib/db/db';
 
 export default function AdminCatalogPage() {
   const [foods, setFoods] = useState<FoodItem[]>(FOOD_DATASET);

@@ -1,4 +1,4 @@
-import { db, type LocalFoodLogEntry, type SyncQueueItem } from '../db/db.js';
+import { db, type LocalFoodLogEntry, type SyncQueueItem } from '../db/db';
 
 export class SyncEngine {
   private isSyncing = false;

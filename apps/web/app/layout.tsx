@@ -1,7 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Navbar } from '../components/Navbar.js';
-import { FoodSearchModal } from '../features/food-search/FoodSearchModal.js';
+import { Navbar } from '../components/Navbar';
+import { FoodSearchModal } from '../features/food-search/FoodSearchModal';
 
 export const metadata: Metadata = {
   title: {

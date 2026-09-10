@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Scale, CheckCircle2, Circle, TrendingDown, TrendingUp, Plus, Calendar } from 'lucide-react';
 import type { ProgressSummary, WeightLog } from '@thali/types';
-import { useNutritionStore } from '../../lib/store/useNutritionStore.js';
+import { useNutritionStore } from '../../lib/store/useNutritionStore';
 
 export default function ProgressPage() {
   const subscriberId = useNutritionStore((s) => s.subscriberId);

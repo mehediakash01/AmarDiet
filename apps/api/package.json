@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.2.0",
     "@thali/domain": "workspace:*",
     "@thali/food-data": "workspace:*",
     "@thali/nutrition-engine": "workspace:*",

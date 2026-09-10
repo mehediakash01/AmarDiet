@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { getDatabase } from './infrastructure/db/index.js';
 import {
   type ISubscriberRepository,
@@ -49,6 +50,8 @@ export interface AppOptions {
   foodService?: FoodService;
   databaseUrl?: string;
   logger?: boolean;
+  enableRateLimit?: boolean;
+  rateLimitMax?: number;
 }
 
 /**
@@ -63,6 +66,18 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(cors, {
     origin: true,
   });
+
+  if (options.enableRateLimit !== false) {
+    await app.register(rateLimit, {
+      max: options.rateLimitMax ?? 120,
+      timeWindow: '1 minute',
+      errorResponseBuilder: (_req, context) => ({
+        statusCode: 429,
+        error: 'Too Many Requests',
+        message: `Rate limit exceeded, retry in ${context.after}`,
+      }),
+    });
+  }
 
   // Health check endpoint
   app.get('/health', async () => ({

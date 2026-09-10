@@ -4,8 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search, X, Plus, Check } from 'lucide-react';
 import type { FoodItem, MealSlot } from '@thali/types';
 import { FOOD_DATASET } from '@thali/food-data';
-import { useNutritionStore } from '../../lib/store/useNutritionStore.js';
-import { db } from '../../lib/db/db.js';
+import { useNutritionStore } from '../../lib/store/useNutritionStore';
+import { db } from '../../lib/db/db';
 
 export function FoodSearchModal() {
   const isSearchModalOpen = useNutritionStore((s) => s.isSearchModalOpen);
