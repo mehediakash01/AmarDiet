@@ -90,3 +90,20 @@ export const dietPlans = pgTable('diet_plans', {
 export type DietPlanRow = typeof dietPlans.$inferSelect;
 export type NewDietPlanRow = typeof dietPlans.$inferInsert;
 
+/**
+ * Weight Logs table — body weight tracking over time
+ */
+export const weightLogs = pgTable('weight_logs', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  subscriberId: varchar('subscriber_id', { length: 64 })
+    .notNull()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  weight_kg: doublePrecision('weight_kg').notNull(),
+  loggedOn: varchar('logged_on', { length: 16 }).notNull(), // YYYY-MM-DD
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type WeightLogRow = typeof weightLogs.$inferSelect;
+export type NewWeightLogRow = typeof weightLogs.$inferInsert;
+
+

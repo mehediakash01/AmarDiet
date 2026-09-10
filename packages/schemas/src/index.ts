@@ -208,3 +208,45 @@ export type GenerateDietPlanInput = z.infer<typeof GenerateDietPlanSchema>;
 export type AddDietPlanItemInput = z.infer<typeof AddDietPlanItemSchema>;
 export type RemoveDietPlanItemInput = z.infer<typeof RemoveDietPlanItemSchema>;
 
+// Progress & Weight Tracking Schemas
+export const LogWeightSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  weight_kg: z.number().positive('weight_kg must be positive').max(400),
+  loggedOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'loggedOn must be YYYY-MM-DD format'),
+});
+
+export const ProgressQuerySchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  days: z.coerce.number().int().positive().optional().default(30),
+});
+
+export type LogWeightInput = z.infer<typeof LogWeightSchema>;
+export type ProgressQueryInput = z.infer<typeof ProgressQuerySchema>;
+
+// Admin Food Catalog Schemas
+export const AdminCreateFoodSchema = z.object({
+  id: z.string().optional(),
+  canonicalName: z.string().min(1, 'canonicalName is required'),
+  localNames: z.array(z.string()).default([]),
+  aliases: z.array(z.string()).default([]),
+  cuisineTags: z.array(z.string()).min(1, 'At least one cuisine tag required'),
+  category: z.string().min(1, 'category is required'),
+  caloriesPer100g: z.number().nonnegative('caloriesPer100g must be >= 0'),
+  proteinPer100g: z.number().nonnegative('proteinPer100g must be >= 0'),
+  carbsPer100g: z.number().nonnegative('carbsPer100g must be >= 0'),
+  fatPer100g: z.number().nonnegative('fatPer100g must be >= 0'),
+  fiberPer100g: z.number().nonnegative('fiberPer100g must be >= 0').default(0),
+  commonServings: z.array(CommonServingSchema).min(1, 'At least one serving required'),
+  source: z.string().optional(),
+  sourceVersion: z.string().optional(),
+  verifiedAt: z.string().optional(),
+});
+
+export const AdminPatchFoodSchema = AdminCreateFoodSchema.partial().omit({ id: true });
+
+export type AdminCreateFoodInput = z.infer<typeof AdminCreateFoodSchema>;
+export type AdminPatchFoodInput = z.infer<typeof AdminPatchFoodSchema>;
+
+

@@ -31,12 +31,21 @@ import {
 } from './modules/diet-plan/diet-plan.repository.js';
 import { DietPlanService } from './modules/diet-plan/diet-plan.service.js';
 import { dietPlanRoutes } from './modules/diet-plan/diet-plan.routes.js';
+import {
+  type IWeightLogRepository,
+  DrizzleWeightLogRepository,
+  InMemoryWeightLogRepository,
+} from './modules/progress/progress.repository.js';
+import { ProgressService } from './modules/progress/progress.service.js';
+import { progressRoutes } from './modules/progress/progress.routes.js';
+import { adminRoutes } from './modules/admin/admin.routes.js';
 
 export interface AppOptions {
   subscriberRepo?: ISubscriberRepository;
   profileRepo?: IProfileRepository;
   foodLogRepo?: IFoodLogRepository;
   dietPlanRepo?: IDietPlanRepository;
+  weightLogRepo?: IWeightLogRepository;
   foodService?: FoodService;
   databaseUrl?: string;
   logger?: boolean;
@@ -65,19 +74,22 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   let profileRepo = options.profileRepo;
   let foodLogRepo = options.foodLogRepo;
   let dietPlanRepo = options.dietPlanRepo;
+  let weightLogRepo = options.weightLogRepo;
 
-  if (!subscriberRepo || !profileRepo || !foodLogRepo || !dietPlanRepo) {
+  if (!subscriberRepo || !profileRepo || !foodLogRepo || !dietPlanRepo || !weightLogRepo) {
     const db = getDatabase(options.databaseUrl);
     if (db) {
       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
       profileRepo = profileRepo || new DrizzleProfileRepository(db);
       foodLogRepo = foodLogRepo || new DrizzleFoodLogRepository(db);
       dietPlanRepo = dietPlanRepo || new DrizzleDietPlanRepository(db);
+      weightLogRepo = weightLogRepo || new DrizzleWeightLogRepository(db);
     } else {
       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
       profileRepo = profileRepo || new InMemoryProfileRepository();
       foodLogRepo = foodLogRepo || new InMemoryFoodLogRepository();
       dietPlanRepo = dietPlanRepo || new InMemoryDietPlanRepository();
+      weightLogRepo = weightLogRepo || new InMemoryWeightLogRepository();
     }
   }
 
@@ -86,12 +98,15 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const foodService = options.foodService || new FoodService();
   const foodLogService = new FoodLogService(foodLogRepo, foodService);
   const dietPlanService = new DietPlanService(dietPlanRepo, profileService, foodService);
+  const progressService = new ProgressService(weightLogRepo, profileService, foodLogService);
 
   await app.register(subscriberRoutes(subscriberService));
   await app.register(profileRoutes(profileService));
   await app.register(foodRoutes(foodService));
   await app.register(foodLogRoutes(foodLogService));
   await app.register(dietPlanRoutes(dietPlanService));
+  await app.register(progressRoutes(progressService));
+  await app.register(adminRoutes(foodService));
 
   return app;
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Utensils, LayoutDashboard, BookOpen, CalendarDays, Settings } from 'lucide-react';
+import { Utensils, LayoutDashboard, BookOpen, CalendarDays, TrendingUp, ShieldCheck, Settings } from 'lucide-react';
 
 export function Navbar() {
   const pathname = usePathname();
@@ -11,7 +11,9 @@ export function Navbar() {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/tracker', label: 'Diary', icon: BookOpen },
     { href: '/plan', label: 'Diet Plan', icon: CalendarDays },
-    { href: '/onboarding', label: 'Profile Setup', icon: Settings },
+    { href: '/progress', label: 'Progress', icon: TrendingUp },
+    { href: '/admin', label: 'Admin', icon: ShieldCheck },
+    { href: '/onboarding', label: 'Profile', icon: Settings },
   ];
 
   return (

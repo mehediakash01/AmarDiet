@@ -1,5 +1,7 @@
-import { getAllFoods, getFoodById } from '@thali/food-data';
+import { randomUUID } from 'crypto';
+import { FOOD_DATASET } from '@thali/food-data';
 import type { CuisinePreference, FoodItem } from '@thali/types';
+import type { AdminCreateFoodInput, AdminPatchFoodInput } from '@thali/schemas';
 
 export interface SearchFoodsOptions {
   q?: string;
@@ -8,6 +10,15 @@ export interface SearchFoodsOptions {
 }
 
 export class FoodService {
+  private customFoods = new Map<string, FoodItem>();
+
+  constructor() {
+    // Pre-populate with base dataset
+    for (const food of FOOD_DATASET) {
+      this.customFoods.set(food.id, { ...food });
+    }
+  }
+
   /**
    * Search across the unified food catalog.
    * Cuisine tags and user preference are used ONLY for score boosting / ranking,
@@ -18,7 +29,7 @@ export class FoodService {
     const cuisinePref = options.cuisinePreference;
     const limit = options.limit || 50;
 
-    const allFoods = getAllFoods();
+    const allFoods = Array.from(this.customFoods.values());
 
     if (!query) {
       // If no search query, return default dataset, slightly prioritizing preferred cuisine if provided
@@ -75,6 +86,55 @@ export class FoodService {
   }
 
   getFoodById(id: string): FoodItem | null {
-    return getFoodById(id) ?? null;
+    return this.customFoods.get(id) ?? null;
+  }
+
+  /**
+   * Add a new food item into the universal catalog.
+   * Immediately searchable without application rebuild.
+   */
+  addCustomFood(input: AdminCreateFoodInput): FoodItem {
+    const id = input.id || `food_custom_${Date.now()}_${randomUUID().substring(0, 6)}`;
+    const food: FoodItem = {
+      id,
+      canonicalName: input.canonicalName,
+      localNames: input.localNames || [],
+      aliases: input.aliases || [],
+      cuisineTags: input.cuisineTags,
+      category: input.category,
+      caloriesPer100g: input.caloriesPer100g,
+      proteinPer100g: input.proteinPer100g,
+      carbsPer100g: input.carbsPer100g,
+      fatPer100g: input.fatPer100g,
+      fiberPer100g: input.fiberPer100g ?? 0,
+      commonServings: input.commonServings,
+      source: input.source || 'Admin Entry',
+      sourceVersion: input.sourceVersion || '1.0',
+      verifiedAt: input.verifiedAt || new Date().toISOString().split('T')[0],
+    };
+
+    this.customFoods.set(id, food);
+    return food;
+  }
+
+  /**
+   * Update existing food item in catalog.
+   */
+  updateCustomFood(id: string, updates: AdminPatchFoodInput): FoodItem | null {
+    const existing = this.customFoods.get(id);
+    if (!existing) return null;
+
+    const updated: FoodItem = {
+      ...existing,
+      ...updates,
+      localNames: updates.localNames || existing.localNames,
+      aliases: updates.aliases || existing.aliases,
+      cuisineTags: updates.cuisineTags || existing.cuisineTags,
+      commonServings: updates.commonServings || existing.commonServings,
+      verifiedAt: new Date().toISOString().split('T')[0],
+    };
+
+    this.customFoods.set(id, updated);
+    return updated;
   }
 }

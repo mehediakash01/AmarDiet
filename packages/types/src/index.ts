@@ -155,4 +155,38 @@ export interface DietPlan {
   updatedAt: string;
 }
 
+export interface WeightLog {
+  id: string;
+  subscriberId: string;
+  weight_kg: number;
+  loggedOn: string; // YYYY-MM-DD
+  createdAt: string;
+}
+
+export interface WeeklyAdherenceDay {
+  date: string; // YYYY-MM-DD
+  dayLabel: string; // "Mon", "Tue", etc.
+  isLogged: boolean;
+  totalCalories: number;
+  targetCalories: number;
+  adherent: boolean; // within acceptable range (e.g. ±200 kcal of target or logged)
+}
+
+export interface ProgressSummary {
+  subscriberId: string;
+  currentWeight_kg?: number;
+  startingWeight_kg?: number;
+  targetWeight_kg?: number;
+  weightDelta_kg?: number;
+  weightHistory: WeightLog[];
+  weeklyAdherence: {
+    days: WeeklyAdherenceDay[];
+    adherencePercent: number;
+    daysLoggedCount: number;
+    totalDays: number;
+    averageCalories: number;
+  };
+}
+
+
 
