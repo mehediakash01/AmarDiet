@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
-import { FOOD_DATASET } from '@thali/food-data';
 import type { CuisinePreference, FoodItem } from '@thali/types';
 import type { AdminCreateFoodInput, AdminPatchFoodInput } from '@thali/schemas';
+import type { IFoodRepository } from './food.repository.js';
 
 export interface SearchFoodsOptions {
   q?: string;
@@ -10,12 +10,29 @@ export interface SearchFoodsOptions {
 }
 
 export class FoodService {
-  private customFoods = new Map<string, FoodItem>();
+  // In-memory read cache kept in sync with the repository so search stays
+  // fast and synchronous. The repository (Drizzle or InMemory) is always
+  // the source of truth — this cache is rebuilt from it on init() and
+  // after every mutation.
+  private cache: Map<string, FoodItem> = new Map();
+  private initialized = false;
 
-  constructor() {
-    // Pre-populate with base dataset
-    for (const food of FOOD_DATASET) {
-      this.customFoods.set(food.id, { ...food });
+  constructor(private repository: IFoodRepository) {}
+
+  /**
+   * Must be awaited once at startup before the food routes are registered.
+   */
+  async init(): Promise<void> {
+    const all = await this.repository.findAll();
+    this.cache = new Map(all.map((f) => [f.id, f]));
+    this.initialized = true;
+  }
+
+  private assertInitialized(): void {
+    if (!this.initialized) {
+      throw new Error(
+        'FoodService.init() must be awaited before use — the food catalog has not been loaded yet.',
+      );
     }
   }
 
@@ -25,14 +42,14 @@ export class FoodService {
    * never as an exclusion filter.
    */
   searchFoods(options: SearchFoodsOptions = {}): FoodItem[] {
+    this.assertInitialized();
     const query = (options.q || '').trim().toLowerCase();
     const cuisinePref = options.cuisinePreference;
     const limit = options.limit || 50;
 
-    const allFoods = Array.from(this.customFoods.values());
+    const allFoods = Array.from(this.cache.values());
 
     if (!query) {
-      // If no search query, return default dataset, slightly prioritizing preferred cuisine if provided
       if (!cuisinePref || cuisinePref === 'mixed') {
         return allFoods.slice(0, limit);
       }
@@ -45,7 +62,6 @@ export class FoodService {
         .slice(0, limit);
     }
 
-    // Score and rank each food
     const scoredFoods: Array<{ food: FoodItem; score: number }> = [];
 
     for (const food of allFoods) {
@@ -70,30 +86,28 @@ export class FoodService {
       if (tagMatches) score += 15;
 
       if (score > 0) {
-        // Soft bias boost: if user has a cuisine preference and food matches, boost rank slightly
         if (cuisinePref && cuisinePref !== 'mixed' && food.cuisineTags.includes(cuisinePref)) {
           score += 5;
         }
-
         scoredFoods.push({ food, score });
       }
     }
 
-    // Sort descending by score
     scoredFoods.sort((a, b) => b.score - a.score);
-
     return scoredFoods.map((item) => item.food).slice(0, limit);
   }
 
   getFoodById(id: string): FoodItem | null {
-    return this.customFoods.get(id) ?? null;
+    this.assertInitialized();
+    return this.cache.get(id) ?? null;
   }
 
   /**
    * Add a new food item into the universal catalog.
-   * Immediately searchable without application rebuild.
+   * Persists to the repository, then updates the search cache — immediately
+   * searchable without an application rebuild AND surviving a restart.
    */
-  addCustomFood(input: AdminCreateFoodInput): FoodItem {
+  async addCustomFood(input: AdminCreateFoodInput): Promise<FoodItem> {
     const id = input.id || `food_custom_${Date.now()}_${randomUUID().substring(0, 6)}`;
     const food: FoodItem = {
       id,
@@ -113,15 +127,17 @@ export class FoodService {
       verifiedAt: input.verifiedAt || new Date().toISOString().split('T')[0],
     };
 
-    this.customFoods.set(id, food);
-    return food;
+    const saved = await this.repository.upsert(food);
+    this.cache.set(saved.id, saved);
+    return saved;
   }
 
   /**
-   * Update existing food item in catalog.
+   * Update existing food item in catalog. Persists to the repository, then
+   * updates the search cache.
    */
-  updateCustomFood(id: string, updates: AdminPatchFoodInput): FoodItem | null {
-    const existing = this.customFoods.get(id);
+  async updateCustomFood(id: string, updates: AdminPatchFoodInput): Promise<FoodItem | null> {
+    const existing = this.cache.get(id);
     if (!existing) return null;
 
     const updated: FoodItem = {
@@ -134,7 +150,8 @@ export class FoodService {
       verifiedAt: new Date().toISOString().split('T')[0],
     };
 
-    this.customFoods.set(id, updated);
-    return updated;
+    const saved = await this.repository.upsert(updated);
+    this.cache.set(saved.id, saved);
+    return saved;
   }
 }

@@ -106,4 +106,35 @@ export const weightLogs = pgTable('weight_logs', {
 export type WeightLogRow = typeof weightLogs.$inferSelect;
 export type NewWeightLogRow = typeof weightLogs.$inferInsert;
 
+/**
+ * Foods table — the universal, cuisine-agnostic food catalog.
+ * This did not previously exist: the food catalog lived only in a static
+ * TypeScript array and an in-memory Map, so admin edits and any food added
+ * beyond the seed set were lost on every server restart. This table is the
+ * real source of truth; the static dataset is now just the seed data used
+ * to populate it once.
+ */
+export const foods = pgTable('foods', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  canonicalName: varchar('canonical_name', { length: 256 }).notNull(),
+  localNames: jsonb('local_names').notNull().default([]),
+  aliases: jsonb('aliases').notNull().default([]),
+  cuisineTags: jsonb('cuisine_tags').notNull().default([]),
+  category: varchar('category', { length: 64 }).notNull(),
+  caloriesPer100g: doublePrecision('calories_per_100g').notNull(),
+  proteinPer100g: doublePrecision('protein_per_100g').notNull(),
+  carbsPer100g: doublePrecision('carbs_per_100g').notNull(),
+  fatPer100g: doublePrecision('fat_per_100g').notNull(),
+  fiberPer100g: doublePrecision('fiber_per_100g').notNull().default(0),
+  commonServings: jsonb('common_servings').notNull().default([]),
+  source: varchar('source', { length: 128 }),
+  sourceVersion: varchar('source_version', { length: 32 }),
+  verifiedAt: varchar('verified_at', { length: 32 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type FoodRow = typeof foods.$inferSelect;
+export type NewFoodRow = typeof foods.$inferInsert;
+
 

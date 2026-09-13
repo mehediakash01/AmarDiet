@@ -17,6 +17,9 @@
     "test:integration": "pnpm --filter @thali/api test",
     "test:e2e": "playwright test",
     "validate:food": "tsx scripts/validate-food-data.ts",
+    "db:migrate": "pnpm --filter @thali/api db:migrate",
+    "db:seed": "pnpm --filter @thali/api db:seed",
+    "db:setup": "pnpm db:migrate && pnpm db:seed",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

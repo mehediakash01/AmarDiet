@@ -6,6 +6,7 @@ import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/pr
 import { InMemoryFoodLogRepository } from '../../apps/api/src/modules/food-log/food-log.repository.js';
 import { InMemoryDietPlanRepository } from '../../apps/api/src/modules/diet-plan/diet-plan.repository.js';
 import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
+import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
 
 describe('API Integration: Diet Plan Generation & Meal Customization', () => {
   let app: FastifyInstance;
@@ -22,7 +23,8 @@ describe('API Integration: Diet Plan Generation & Meal Customization', () => {
     profileRepo = new InMemoryProfileRepository();
     foodLogRepo = new InMemoryFoodLogRepository();
     dietPlanRepo = new InMemoryDietPlanRepository();
-    foodService = new FoodService();
+    foodService = new FoodService(new InMemoryFoodRepository());
+    await foodService.init();
 
     app = await buildApp({
       subscriberRepo,
