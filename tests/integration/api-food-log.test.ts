@@ -5,6 +5,7 @@ import { InMemorySubscriberRepository } from '../../apps/api/src/modules/subscri
 import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/profile.repository.js';
 import { InMemoryFoodLogRepository } from '../../apps/api/src/modules/food-log/food-log.repository.js';
 import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
+import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
 
 describe('API Integration: Food Search & Food Logging Modules', () => {
   let app: FastifyInstance;
@@ -17,7 +18,8 @@ describe('API Integration: Food Search & Food Logging Modules', () => {
     subscriberRepo = new InMemorySubscriberRepository();
     profileRepo = new InMemoryProfileRepository();
     foodLogRepo = new InMemoryFoodLogRepository();
-    foodService = new FoodService();
+    foodService = new FoodService(new InMemoryFoodRepository());
+    await foodService.init();
 
     app = await buildApp({
       subscriberRepo,

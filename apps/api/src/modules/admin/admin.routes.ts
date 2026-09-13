@@ -14,7 +14,7 @@ export const adminRoutes = (foodService: FoodService): FastifyPluginAsync => {
         });
       }
 
-      const food = foodService.addCustomFood(parseResult.data);
+      const food = await foodService.addCustomFood(parseResult.data);
       return reply.status(201).send(food);
     });
 
@@ -29,7 +29,7 @@ export const adminRoutes = (foodService: FoodService): FastifyPluginAsync => {
         });
       }
 
-      const updated = foodService.updateCustomFood(id, parseResult.data);
+      const updated = await foodService.updateCustomFood(id, parseResult.data);
       if (!updated) {
         return reply.status(404).send({
           error: `Food item with ID "${id}" not found`,

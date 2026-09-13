@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { buildApp } from './app.js';
 
 export * from './app.js';

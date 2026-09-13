@@ -1,0 +1,1366 @@
+From e8005d9b71080c8fae2900063c51bcc343bf2993 Mon Sep 17 00:00:00 2001
+From: Patch Baseline <patch@local>
+Date: Sun, 13 Sep 2026 19:33:48 +0000
+Subject: [PATCH] feat(database): wire real Postgres connection, migrations,
+ and foods table
+
+- Add foods table to schema (previously missing entirely)
+- Add real SQL migrations + idempotent migration runner (apps/api/src/scripts/migrate.ts)
+- Add food-data seed script
+- Add DrizzleFoodRepository / InMemoryFoodRepository (food data had no repository before)
+- Refactor FoodService to persist through the repository instead of a bare Map
+- app.ts: in-memory fallback now logs a loud warning instead of failing silently
+- /health now reports real persistence mode (connected vs in-memory)
+- Update 3 integration tests for the new FoodService constructor signature
+- Add apps/api/.env.example (Neon-oriented)
+---
+ DATABASE_UPDATE_CHANGES.md                   | 141 +++++++++++++++++++
+ apps/api/.env.example                        |  20 +++
+ apps/api/package.json                        |   5 +-
+ apps/api/src/app.ts                          |  54 +++++--
+ apps/api/src/index.ts                        |   1 +
+ apps/api/src/infrastructure/db/schema.ts     |  31 ++++
+ apps/api/src/modules/admin/admin.routes.ts   |   4 +-
+ apps/api/src/modules/food/food.repository.ts | 127 +++++++++++++++++
+ apps/api/src/modules/food/food.service.ts    |  63 ++++++---
+ apps/api/src/scripts/migrate.ts              |  91 ++++++++++++
+ apps/api/src/scripts/seed-food-data.ts       |  72 ++++++++++
+ database/migrations/0001_init.sql            |  69 +++++++++
+ database/migrations/0002_foods.sql           |  28 ++++
+ package.json                                 |   3 +
+ pnpm-lock.yaml                               | 111 ++++++++-------
+ tests/integration/api-diet-plan.test.ts      |   4 +-
+ tests/integration/api-food-log.test.ts       |   4 +-
+ tests/integration/api-progress-admin.test.ts |   4 +-
+ 18 files changed, 744 insertions(+), 88 deletions(-)
+ create mode 100644 DATABASE_UPDATE_CHANGES.md
+ create mode 100644 apps/api/.env.example
+ create mode 100644 apps/api/src/modules/food/food.repository.ts
+ create mode 100644 apps/api/src/scripts/migrate.ts
+ create mode 100644 apps/api/src/scripts/seed-food-data.ts
+ create mode 100644 database/migrations/0001_init.sql
+ create mode 100644 database/migrations/0002_foods.sql
+
+diff --git a/DATABASE_UPDATE_CHANGES.md b/DATABASE_UPDATE_CHANGES.md
+new file mode 100644
+index 0000000..51909ca
+--- /dev/null
++++ b/DATABASE_UPDATE_CHANGES.md
+@@ -0,0 +1,141 @@
++# Database Connection — What Changed
++
++This covers ONLY the "real database connection" feature. Nothing else
++(diet-plan/AI logic, subscription/Bdapps, onboarding-to-API wiring) was
++touched — those are separate features to tackle next, one at a time.
++
++## New files
++
++- `database/migrations/0001_init.sql` — creates the 5 originally-defined
++  tables (subscribers, profiles, food_logs, diet_plans, weight_logs)
++- `database/migrations/0002_foods.sql` — creates the `foods` table, which
++  **did not exist before** even though a food catalog was implied
++- `apps/api/src/scripts/migrate.ts` — migration runner. Applies `.sql`
++  files in order, tracks progress in a `schema_migrations` table, safe to
++  re-run anytime
++- `apps/api/src/scripts/seed-food-data.ts` — loads the static food dataset
++  into the real `foods` table (idempotent upsert)
++- `apps/api/src/modules/food/food.repository.ts` — new repository layer
++  for food data (`DrizzleFoodRepository` + `InMemoryFoodRepository`).
++  Food data previously had no repository at all — just a bare in-memory
++  `Map` with no persistence path whatsoever.
++- `apps/api/.env.example` — documents `DATABASE_URL` (Neon connection
++  string format), `PORT`, `HOST`
++
++## Modified files
++
++- `apps/api/src/infrastructure/db/schema.ts` — added the `foods` table
++  definition
++- `apps/api/src/modules/food/food.service.ts` — rewritten to persist
++  through `IFoodRepository` instead of an isolated `Map`. `addCustomFood`
++  and `updateCustomFood` are now `async` (they write through to the DB)
++- `apps/api/src/modules/admin/admin.routes.ts` — added `await` for the
++  now-async food service calls
++- `apps/api/src/app.ts` — this is the important one:
++  - Wires `DrizzleFoodRepository` / `InMemoryFoodRepository` alongside the
++    other repos
++  - **The in-memory fallback now prints a loud warning** every time it's
++    used, instead of silently happening
++  - `/health` now reports the real persistence mode:
++    `"database": "connected"` vs `"database": "in-memory (not persistent)"`
++    — you can check this from outside the server at any time, in any
++    environment, without reading logs
++- `apps/api/src/index.ts` — loads `.env` via `dotenv/config` for local dev
++- `apps/api/package.json` — added `dotenv` dependency, `db:migrate` and
++  `db:seed` scripts
++- `package.json` (root) — added `db:migrate`, `db:seed`, `db:setup`
++  convenience scripts
++- Three integration test files updated to construct `FoodService` with
++  the new repository-based constructor signature
++
++## How to apply
++
++Since this is a partial update to an existing project, review these
++changes against your own repo (diff, or apply as a patch) rather than
++blindly overwriting — you may have made other changes since the last
++export. The affected files are small and clearly scoped, so a manual
++merge should be quick.
++
++## How to verify it's actually working (don't just trust this doc)
++
++**1. Get a connection string from Neon:**
++Neon dashboard → your project → Connection Details → copy the connection
++string (either the pooled one with `-pooler` in the hostname, or the
++direct/unpooled one — both work with this project's plain `postgres`
++driver). Paste it into `apps/api/.env` as `DATABASE_URL`.
++
++Tip: Neon supports branching — consider creating a separate branch (or
++project) for local development so you're never testing against the same
++data as production.
++
++```bash
++cp apps/api/.env.example apps/api/.env
++# edit apps/api/.env and paste your real Neon connection string
++pnpm install
++pnpm db:setup        # runs migrations, then seeds food data
++pnpm dev
++```
++
++**2. Check `/health` — this is the tell:**
++```bash
++curl http://localhost:3001/health
++```
++- `"database": "connected"` → real Postgres, data survives restarts
++- `"database": "in-memory (not persistent)"` → check your `DATABASE_URL`,
++  something's not wired up. You'll also see a loud warning in the server
++  logs the moment it starts.
++
++**3. Prove persistence for yourself:**
++```bash
++# create a subscriber
++curl -X POST http://localhost:3001/api/subscribers \
++  -H "Content-Type: application/json" \
++  -d '{"id":"<a-uuid-here>","phone":"+8801700000000"}'
++
++# stop the server (Ctrl+C), start it again (pnpm dev), then:
++curl http://localhost:3001/api/subscribers/<the-uuid-you-used>
++```
++If it's still there after a full restart, it's real.
++
++**4. For your Exonhost deployment**, the app runs on Exonhost but the
++database is Neon (that's fine — they're independent, the app just connects
++to Neon over the network). Set `DATABASE_URL` in your Exonhost Node.js app's
++environment variables to the same (or a separate production-branch) Neon
++connection string, then run:
++```bash
++pnpm db:migrate
++pnpm db:seed
++```
++
++## What this does NOT fix yet (by design — one feature at a time)
++
++- Onboarding still writes only to local IndexedDB, not the real
++  subscriber/profile API — that's the next feature to tackle
++- Diet plan generation is still the same rule-based picker (no AI) — real
++  scope of that decision is a separate conversation
++- Subscription/Bdapps still doesn't exist
++- The frontend's diet-plan fetch calls still use a hardcoded
++  `localhost:3001` URL and fall back to a static mock plan if the request
++  fails — needs an env-based API URL and the mock fallback needs to be
++  removed once the real flow is wired end to end
++
++## What was actually verified in this build (not just written and hoped)
++
++- Full workspace build (`pnpm --recursive --sort run build`) — clean, 0 errors
++- Full test suite (`pnpm test`) — 79/79 tests passing (50 nutrition-engine
++  unit tests + 29 API integration tests)
++- Real Postgres 16 instance stood up locally (for testing purposes only —
++  same standard Postgres wire protocol Neon uses), migrations applied
++  against it end-to-end, confirmed idempotent on re-run. This validates the
++  SQL and migration logic itself; it wasn't run against your actual Neon
++  instance since I don't have those credentials — do the same `/health`
++  and persistence check yourself once you've plugged in your real
++  `DATABASE_URL`, just to be sure nothing Neon-specific (SSL mode, pooling)
++  trips it up.
++- Food data seeded into the real `foods` table (42 rows), confirmed via
++  direct SQL query
++- Live server started against the real database, `/health` confirmed
++  `"connected"`, `/api/foods/search` confirmed serving real DB-backed data
++- A subscriber created through the live HTTP API was verified sitting in
++  the Postgres `subscribers` table via an independent `psql` query — proof
++  this is real persistence, not an in-process illusion
+diff --git a/apps/api/.env.example b/apps/api/.env.example
+new file mode 100644
+index 0000000..4b100a8
+--- /dev/null
++++ b/apps/api/.env.example
+@@ -0,0 +1,20 @@
++# Copy this file to .env and fill in real values.
++# .env is gitignored — never commit real credentials.
++
++# Postgres connection string, from Neon. Without this set, the API silently
++# falls back to in-memory storage (see app.ts) — fine for a quick local
++# check, but data will NOT persist across restarts. Always set this for
++# anything beyond a throwaway test run.
++#
++# Get this from your Neon project dashboard -> Connection Details.
++# Neon gives you two variants:
++#   - Pooled (recommended for the running app — has "-pooler" in the host)
++#   - Direct/unpooled (recommended for running migrations)
++# Both work fine here since this project uses the plain `postgres` driver
++# over standard TCP, not Neon's special serverless HTTP driver.
++#
++# Example (replace with your real values from the Neon dashboard):
++DATABASE_URL=postgresql://<user>:<password>@<project>-pooler.<region>.aws.neon.tech/<database>?sslmode=require
++
++PORT=3001
++HOST=0.0.0.0
+diff --git a/apps/api/package.json b/apps/api/package.json
+index 88a38fa..259510b 100644
+--- a/apps/api/package.json
++++ b/apps/api/package.json
+@@ -9,7 +9,9 @@
+     "test": "vitest run",
+     "test:watch": "vitest",
+     "dev": "tsx watch src/index.ts",
+-    "start": "node dist/index.js"
++    "start": "node dist/index.js",
++    "db:migrate": "tsx src/scripts/migrate.ts",
++    "db:seed": "tsx src/scripts/seed-food-data.ts"
+   },
+   "dependencies": {
+     "@fastify/cors": "^11.3.0",
+@@ -19,6 +21,7 @@
+     "@thali/nutrition-engine": "workspace:*",
+     "@thali/schemas": "workspace:*",
+     "@thali/types": "workspace:*",
++    "dotenv": "^16.4.5",
+     "drizzle-orm": "^0.45.2",
+     "fastify": "^5.12.3",
+     "postgres": "^3.4.9"
+diff --git a/apps/api/src/app.ts b/apps/api/src/app.ts
+index e984c38..633a6fd 100644
+--- a/apps/api/src/app.ts
++++ b/apps/api/src/app.ts
+@@ -17,6 +17,11 @@ import {
+ import { ProfileService } from './modules/profile/profile.service.js';
+ import { profileRoutes } from './modules/profile/profile.routes.js';
+ import { FoodService } from './modules/food/food.service.js';
++import {
++  type IFoodRepository,
++  DrizzleFoodRepository,
++  InMemoryFoodRepository,
++} from './modules/food/food.repository.js';
+ import { foodRoutes } from './modules/food/food.routes.js';
+ import {
+   type IFoodLogRepository,
+@@ -47,6 +52,7 @@ export interface AppOptions {
+   foodLogRepo?: IFoodLogRepository;
+   dietPlanRepo?: IDietPlanRepository;
+   weightLogRepo?: IWeightLogRepository;
++  foodRepo?: IFoodRepository;
+   foodService?: FoodService;
+   databaseUrl?: string;
+   logger?: boolean;
+@@ -79,38 +85,68 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
+     });
+   }
+ 
+-  // Health check endpoint
+-  app.get('/health', async () => ({
+-    status: 'ok',
+-    timestamp: new Date().toISOString(),
+-  }));
+-
+   let subscriberRepo = options.subscriberRepo;
+   let profileRepo = options.profileRepo;
+   let foodLogRepo = options.foodLogRepo;
+   let dietPlanRepo = options.dietPlanRepo;
+   let weightLogRepo = options.weightLogRepo;
++  let foodRepo = options.foodRepo;
++
++  const db = getDatabase(options.databaseUrl);
++  const usingRealDatabase = db !== null;
+ 
+-  if (!subscriberRepo || !profileRepo || !foodLogRepo || !dietPlanRepo || !weightLogRepo) {
+-    const db = getDatabase(options.databaseUrl);
++  if (!usingRealDatabase) {
++    // This is the single place that decides between real persistence and
++    // in-memory fallback. Every server restart wipes in-memory data, so
++    // this must never be a silent decision.
++    // eslint-disable-next-line no-console
++    console.warn(
++      '\n⚠️  No DATABASE_URL configured — running on IN-MEMORY storage.\n' +
++        '    All data (subscribers, profiles, food logs, plans, weight logs,\n' +
++        '    and the food catalog) will be LOST on restart. This is only\n' +
++        '    appropriate for local development or tests.\n' +
++        '    Set DATABASE_URL and run `pnpm db:migrate` to use a real database.\n',
++    );
++  }
++
++  if (
++    !subscriberRepo ||
++    !profileRepo ||
++    !foodLogRepo ||
++    !dietPlanRepo ||
++    !weightLogRepo ||
++    !foodRepo
++  ) {
+     if (db) {
+       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
+       profileRepo = profileRepo || new DrizzleProfileRepository(db);
+       foodLogRepo = foodLogRepo || new DrizzleFoodLogRepository(db);
+       dietPlanRepo = dietPlanRepo || new DrizzleDietPlanRepository(db);
+       weightLogRepo = weightLogRepo || new DrizzleWeightLogRepository(db);
++      foodRepo = foodRepo || new DrizzleFoodRepository(db);
+     } else {
+       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
+       profileRepo = profileRepo || new InMemoryProfileRepository();
+       foodLogRepo = foodLogRepo || new InMemoryFoodLogRepository();
+       dietPlanRepo = dietPlanRepo || new InMemoryDietPlanRepository();
+       weightLogRepo = weightLogRepo || new InMemoryWeightLogRepository();
++      foodRepo = foodRepo || new InMemoryFoodRepository();
+     }
+   }
+ 
++  // Health check endpoint — reports the REAL persistence mode, so it's
++  // always possible to verify from outside whether data will survive a
++  // restart, rather than having to read server logs to find out.
++  app.get('/health', async () => ({
++    status: 'ok',
++    timestamp: new Date().toISOString(),
++    database: usingRealDatabase ? 'connected' : 'in-memory (not persistent)',
++  }));
++
+   const subscriberService = new SubscriberService(subscriberRepo);
+   const profileService = new ProfileService(profileRepo, subscriberRepo);
+-  const foodService = options.foodService || new FoodService();
++  const foodService = options.foodService || new FoodService(foodRepo);
++  await foodService.init();
+   const foodLogService = new FoodLogService(foodLogRepo, foodService);
+   const dietPlanService = new DietPlanService(dietPlanRepo, profileService, foodService);
+   const progressService = new ProgressService(weightLogRepo, profileService, foodLogService);
+diff --git a/apps/api/src/index.ts b/apps/api/src/index.ts
+index d3bef83..4967d16 100644
+--- a/apps/api/src/index.ts
++++ b/apps/api/src/index.ts
+@@ -1,3 +1,4 @@
++import 'dotenv/config';
+ import { buildApp } from './app.js';
+ 
+ export * from './app.js';
+diff --git a/apps/api/src/infrastructure/db/schema.ts b/apps/api/src/infrastructure/db/schema.ts
+index 8f67196..61a1415 100644
+--- a/apps/api/src/infrastructure/db/schema.ts
++++ b/apps/api/src/infrastructure/db/schema.ts
+@@ -106,4 +106,35 @@ export const weightLogs = pgTable('weight_logs', {
+ export type WeightLogRow = typeof weightLogs.$inferSelect;
+ export type NewWeightLogRow = typeof weightLogs.$inferInsert;
+ 
++/**
++ * Foods table — the universal, cuisine-agnostic food catalog.
++ * This did not previously exist: the food catalog lived only in a static
++ * TypeScript array and an in-memory Map, so admin edits and any food added
++ * beyond the seed set were lost on every server restart. This table is the
++ * real source of truth; the static dataset is now just the seed data used
++ * to populate it once.
++ */
++export const foods = pgTable('foods', {
++  id: varchar('id', { length: 64 }).primaryKey(),
++  canonicalName: varchar('canonical_name', { length: 256 }).notNull(),
++  localNames: jsonb('local_names').notNull().default([]),
++  aliases: jsonb('aliases').notNull().default([]),
++  cuisineTags: jsonb('cuisine_tags').notNull().default([]),
++  category: varchar('category', { length: 64 }).notNull(),
++  caloriesPer100g: doublePrecision('calories_per_100g').notNull(),
++  proteinPer100g: doublePrecision('protein_per_100g').notNull(),
++  carbsPer100g: doublePrecision('carbs_per_100g').notNull(),
++  fatPer100g: doublePrecision('fat_per_100g').notNull(),
++  fiberPer100g: doublePrecision('fiber_per_100g').notNull().default(0),
++  commonServings: jsonb('common_servings').notNull().default([]),
++  source: varchar('source', { length: 128 }),
++  sourceVersion: varchar('source_version', { length: 32 }),
++  verifiedAt: varchar('verified_at', { length: 32 }),
++  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
++  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
++});
++
++export type FoodRow = typeof foods.$inferSelect;
++export type NewFoodRow = typeof foods.$inferInsert;
++
+ 
+diff --git a/apps/api/src/modules/admin/admin.routes.ts b/apps/api/src/modules/admin/admin.routes.ts
+index fe90272..f2a425e 100644
+--- a/apps/api/src/modules/admin/admin.routes.ts
++++ b/apps/api/src/modules/admin/admin.routes.ts
+@@ -14,7 +14,7 @@ export const adminRoutes = (foodService: FoodService): FastifyPluginAsync => {
+         });
+       }
+ 
+-      const food = foodService.addCustomFood(parseResult.data);
++      const food = await foodService.addCustomFood(parseResult.data);
+       return reply.status(201).send(food);
+     });
+ 
+@@ -29,7 +29,7 @@ export const adminRoutes = (foodService: FoodService): FastifyPluginAsync => {
+         });
+       }
+ 
+-      const updated = foodService.updateCustomFood(id, parseResult.data);
++      const updated = await foodService.updateCustomFood(id, parseResult.data);
+       if (!updated) {
+         return reply.status(404).send({
+           error: `Food item with ID "${id}" not found`,
+diff --git a/apps/api/src/modules/food/food.repository.ts b/apps/api/src/modules/food/food.repository.ts
+new file mode 100644
+index 0000000..10ed15f
+--- /dev/null
++++ b/apps/api/src/modules/food/food.repository.ts
+@@ -0,0 +1,127 @@
++import { eq } from 'drizzle-orm';
++import type { FoodItem } from '@thali/types';
++import type { AppDatabase } from '../../infrastructure/db/index.js';
++import { foods, type FoodRow } from '../../infrastructure/db/schema.js';
++import { FOOD_DATASET } from '@thali/food-data';
++
++export interface IFoodRepository {
++  findAll(): Promise<FoodItem[]>;
++  findById(id: string): Promise<FoodItem | null>;
++  upsert(food: FoodItem): Promise<FoodItem>;
++}
++
++function rowToFoodItem(row: FoodRow): FoodItem {
++  return {
++    id: row.id,
++    canonicalName: row.canonicalName,
++    localNames: (row.localNames as string[]) ?? [],
++    aliases: (row.aliases as string[]) ?? [],
++    cuisineTags: (row.cuisineTags as string[]) ?? [],
++    category: row.category,
++    caloriesPer100g: row.caloriesPer100g,
++    proteinPer100g: row.proteinPer100g,
++    carbsPer100g: row.carbsPer100g,
++    fatPer100g: row.fatPer100g,
++    fiberPer100g: row.fiberPer100g,
++    commonServings: (row.commonServings as FoodItem['commonServings']) ?? [],
++    source: row.source ?? undefined,
++    sourceVersion: row.sourceVersion ?? undefined,
++    verifiedAt: row.verifiedAt ?? undefined,
++  };
++}
++
++/**
++ * Real, persistent food catalog backed by Postgres. This is the path used
++ * whenever DATABASE_URL is configured — food data (including admin edits)
++ * survives restarts and is shared across every server instance.
++ */
++export class DrizzleFoodRepository implements IFoodRepository {
++  constructor(private db: AppDatabase) {}
++
++  async findAll(): Promise<FoodItem[]> {
++    const rows = await this.db.select().from(foods);
++    return rows.map(rowToFoodItem);
++  }
++
++  async findById(id: string): Promise<FoodItem | null> {
++    const rows = await this.db.select().from(foods).where(eq(foods.id, id)).limit(1);
++    if (!rows || rows.length === 0) return null;
++    return rowToFoodItem(rows[0]);
++  }
++
++  async upsert(food: FoodItem): Promise<FoodItem> {
++    const now = new Date();
++    const [row] = await this.db
++      .insert(foods)
++      .values({
++        id: food.id,
++        canonicalName: food.canonicalName,
++        localNames: food.localNames,
++        aliases: food.aliases,
++        cuisineTags: food.cuisineTags,
++        category: food.category,
++        caloriesPer100g: food.caloriesPer100g,
++        proteinPer100g: food.proteinPer100g,
++        carbsPer100g: food.carbsPer100g,
++        fatPer100g: food.fatPer100g,
++        fiberPer100g: food.fiberPer100g,
++        commonServings: food.commonServings,
++        source: food.source,
++        sourceVersion: food.sourceVersion,
++        verifiedAt: food.verifiedAt,
++        updatedAt: now,
++      })
++      .onConflictDoUpdate({
++        target: foods.id,
++        set: {
++          canonicalName: food.canonicalName,
++          localNames: food.localNames,
++          aliases: food.aliases,
++          cuisineTags: food.cuisineTags,
++          category: food.category,
++          caloriesPer100g: food.caloriesPer100g,
++          proteinPer100g: food.proteinPer100g,
++          carbsPer100g: food.carbsPer100g,
++          fatPer100g: food.fatPer100g,
++          fiberPer100g: food.fiberPer100g,
++          commonServings: food.commonServings,
++          source: food.source,
++          sourceVersion: food.sourceVersion,
++          verifiedAt: food.verifiedAt,
++          updatedAt: now,
++        },
++      })
++      .returning();
++
++    return rowToFoodItem(row);
++  }
++}
++
++/**
++ * Dev-only fallback used when no DATABASE_URL is configured. Seeded from
++ * the static dataset so local development still works without Postgres,
++ * but nothing written here survives a restart — app.ts logs a clear
++ * warning whenever this path is used so it's never a silent surprise.
++ */
++export class InMemoryFoodRepository implements IFoodRepository {
++  private items = new Map<string, FoodItem>();
++
++  constructor() {
++    for (const food of FOOD_DATASET) {
++      this.items.set(food.id, { ...food });
++    }
++  }
++
++  async findAll(): Promise<FoodItem[]> {
++    return Array.from(this.items.values());
++  }
++
++  async findById(id: string): Promise<FoodItem | null> {
++    return this.items.get(id) ?? null;
++  }
++
++  async upsert(food: FoodItem): Promise<FoodItem> {
++    this.items.set(food.id, food);
++    return food;
++  }
++}
+diff --git a/apps/api/src/modules/food/food.service.ts b/apps/api/src/modules/food/food.service.ts
+index 674c9b6..a58a05c 100644
+--- a/apps/api/src/modules/food/food.service.ts
++++ b/apps/api/src/modules/food/food.service.ts
+@@ -1,7 +1,7 @@
+ import { randomUUID } from 'crypto';
+-import { FOOD_DATASET } from '@thali/food-data';
+ import type { CuisinePreference, FoodItem } from '@thali/types';
+ import type { AdminCreateFoodInput, AdminPatchFoodInput } from '@thali/schemas';
++import type { IFoodRepository } from './food.repository.js';
+ 
+ export interface SearchFoodsOptions {
+   q?: string;
+@@ -10,12 +10,29 @@ export interface SearchFoodsOptions {
+ }
+ 
+ export class FoodService {
+-  private customFoods = new Map<string, FoodItem>();
++  // In-memory read cache kept in sync with the repository so search stays
++  // fast and synchronous. The repository (Drizzle or InMemory) is always
++  // the source of truth — this cache is rebuilt from it on init() and
++  // after every mutation.
++  private cache: Map<string, FoodItem> = new Map();
++  private initialized = false;
+ 
+-  constructor() {
+-    // Pre-populate with base dataset
+-    for (const food of FOOD_DATASET) {
+-      this.customFoods.set(food.id, { ...food });
++  constructor(private repository: IFoodRepository) {}
++
++  /**
++   * Must be awaited once at startup before the food routes are registered.
++   */
++  async init(): Promise<void> {
++    const all = await this.repository.findAll();
++    this.cache = new Map(all.map((f) => [f.id, f]));
++    this.initialized = true;
++  }
++
++  private assertInitialized(): void {
++    if (!this.initialized) {
++      throw new Error(
++        'FoodService.init() must be awaited before use — the food catalog has not been loaded yet.',
++      );
+     }
+   }
+ 
+@@ -25,14 +42,14 @@ export class FoodService {
+    * never as an exclusion filter.
+    */
+   searchFoods(options: SearchFoodsOptions = {}): FoodItem[] {
++    this.assertInitialized();
+     const query = (options.q || '').trim().toLowerCase();
+     const cuisinePref = options.cuisinePreference;
+     const limit = options.limit || 50;
+ 
+-    const allFoods = Array.from(this.customFoods.values());
++    const allFoods = Array.from(this.cache.values());
+ 
+     if (!query) {
+-      // If no search query, return default dataset, slightly prioritizing preferred cuisine if provided
+       if (!cuisinePref || cuisinePref === 'mixed') {
+         return allFoods.slice(0, limit);
+       }
+@@ -45,7 +62,6 @@ export class FoodService {
+         .slice(0, limit);
+     }
+ 
+-    // Score and rank each food
+     const scoredFoods: Array<{ food: FoodItem; score: number }> = [];
+ 
+     for (const food of allFoods) {
+@@ -70,30 +86,28 @@ export class FoodService {
+       if (tagMatches) score += 15;
+ 
+       if (score > 0) {
+-        // Soft bias boost: if user has a cuisine preference and food matches, boost rank slightly
+         if (cuisinePref && cuisinePref !== 'mixed' && food.cuisineTags.includes(cuisinePref)) {
+           score += 5;
+         }
+-
+         scoredFoods.push({ food, score });
+       }
+     }
+ 
+-    // Sort descending by score
+     scoredFoods.sort((a, b) => b.score - a.score);
+-
+     return scoredFoods.map((item) => item.food).slice(0, limit);
+   }
+ 
+   getFoodById(id: string): FoodItem | null {
+-    return this.customFoods.get(id) ?? null;
++    this.assertInitialized();
++    return this.cache.get(id) ?? null;
+   }
+ 
+   /**
+    * Add a new food item into the universal catalog.
+-   * Immediately searchable without application rebuild.
++   * Persists to the repository, then updates the search cache — immediately
++   * searchable without an application rebuild AND surviving a restart.
+    */
+-  addCustomFood(input: AdminCreateFoodInput): FoodItem {
++  async addCustomFood(input: AdminCreateFoodInput): Promise<FoodItem> {
+     const id = input.id || `food_custom_${Date.now()}_${randomUUID().substring(0, 6)}`;
+     const food: FoodItem = {
+       id,
+@@ -113,15 +127,17 @@ export class FoodService {
+       verifiedAt: input.verifiedAt || new Date().toISOString().split('T')[0],
+     };
+ 
+-    this.customFoods.set(id, food);
+-    return food;
++    const saved = await this.repository.upsert(food);
++    this.cache.set(saved.id, saved);
++    return saved;
+   }
+ 
+   /**
+-   * Update existing food item in catalog.
++   * Update existing food item in catalog. Persists to the repository, then
++   * updates the search cache.
+    */
+-  updateCustomFood(id: string, updates: AdminPatchFoodInput): FoodItem | null {
+-    const existing = this.customFoods.get(id);
++  async updateCustomFood(id: string, updates: AdminPatchFoodInput): Promise<FoodItem | null> {
++    const existing = this.cache.get(id);
+     if (!existing) return null;
+ 
+     const updated: FoodItem = {
+@@ -134,7 +150,8 @@ export class FoodService {
+       verifiedAt: new Date().toISOString().split('T')[0],
+     };
+ 
+-    this.customFoods.set(id, updated);
+-    return updated;
++    const saved = await this.repository.upsert(updated);
++    this.cache.set(saved.id, saved);
++    return saved;
+   }
+ }
+diff --git a/apps/api/src/scripts/migrate.ts b/apps/api/src/scripts/migrate.ts
+new file mode 100644
+index 0000000..236a313
+--- /dev/null
++++ b/apps/api/src/scripts/migrate.ts
+@@ -0,0 +1,91 @@
++/**
++ * Database migration runner.
++ *
++ * Applies every .sql file in /database/migrations, in filename order,
++ * exactly once. Tracks what has already been applied in a
++ * `schema_migrations` table so this script is always safe to re-run.
++ *
++ * Usage:
++ *   DATABASE_URL=postgres://... pnpm --filter @thali/api db:migrate
++ */
++import 'dotenv/config';
++import { readdirSync, readFileSync } from 'fs';
++import { join, resolve } from 'path';
++import postgres from 'postgres';
++
++// database/migrations lives at the repo root, three levels up from
++// apps/api/src/scripts. This project compiles to CommonJS (no "type":
++// "module" in package.json), so __dirname is available natively — no
++// import.meta needed here.
++const MIGRATIONS_DIR = resolve(__dirname, '../../../../database/migrations');
++
++async function main() {
++  const databaseUrl = process.env.DATABASE_URL;
++  if (!databaseUrl) {
++    console.error(
++      '✖ DATABASE_URL is not set. Add it to apps/api/.env or your environment before running migrations.',
++    );
++    process.exit(1);
++  }
++
++  const sql = postgres(databaseUrl, { max: 1 });
++
++  try {
++    await sql`
++      CREATE TABLE IF NOT EXISTS schema_migrations (
++        filename VARCHAR(255) PRIMARY KEY,
++        applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
++      )
++    `;
++
++    const applied = new Set(
++      (await sql<{ filename: string }[]>`SELECT filename FROM schema_migrations`).map(
++        (r) => r.filename,
++      ),
++    );
++
++    const files = readdirSync(MIGRATIONS_DIR)
++      .filter((f) => f.endsWith('.sql'))
++      .sort();
++
++    if (files.length === 0) {
++      console.log('No migration files found in', MIGRATIONS_DIR);
++      return;
++    }
++
++    let appliedCount = 0;
++
++    for (const file of files) {
++      if (applied.has(file)) {
++        console.log(`↷ Skipping already-applied migration: ${file}`);
++        continue;
++      }
++
++      const fullPath = join(MIGRATIONS_DIR, file);
++      const sqlText = readFileSync(fullPath, 'utf-8');
++
++      console.log(`→ Applying migration: ${file}`);
++
++      await sql.begin(async (tx) => {
++        await tx.unsafe(sqlText);
++        await tx`INSERT INTO schema_migrations (filename) VALUES (${file})`;
++      });
++
++      appliedCount++;
++      console.log(`✓ Applied: ${file}`);
++    }
++
++    if (appliedCount === 0) {
++      console.log('Database is already up to date. Nothing to apply.');
++    } else {
++      console.log(`\nDone. Applied ${appliedCount} migration(s).`);
++    }
++  } finally {
++    await sql.end();
++  }
++}
++
++main().catch((err) => {
++  console.error('✖ Migration failed:', err);
++  process.exit(1);
++});
+diff --git a/apps/api/src/scripts/seed-food-data.ts b/apps/api/src/scripts/seed-food-data.ts
+new file mode 100644
+index 0000000..76b2fb1
+--- /dev/null
++++ b/apps/api/src/scripts/seed-food-data.ts
+@@ -0,0 +1,72 @@
++/**
++ * Seeds the `foods` table from the static FOOD_DATASET.
++ *
++ * This is a one-time (but safe-to-repeat) bootstrap: it upserts every food
++ * in the static dataset into the real database. After this runs, the
++ * database is the source of truth — the static dataset is only ever used
++ * again if you intentionally want to reset/reseed.
++ *
++ * Usage:
++ *   DATABASE_URL=postgres://... pnpm --filter @thali/api db:seed
++ */
++import 'dotenv/config';
++import postgres from 'postgres';
++import { FOOD_DATASET } from '@thali/food-data';
++
++async function main() {
++  const databaseUrl = process.env.DATABASE_URL;
++  if (!databaseUrl) {
++    console.error(
++      '✖ DATABASE_URL is not set. Add it to apps/api/.env or your environment before seeding.',
++    );
++    process.exit(1);
++  }
++
++  const sql = postgres(databaseUrl, { max: 1 });
++
++  try {
++    let count = 0;
++
++    for (const food of FOOD_DATASET) {
++      await sql`
++        INSERT INTO foods (
++          id, canonical_name, local_names, aliases, cuisine_tags, category,
++          calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g,
++          fiber_per_100g, common_servings, source, source_version, verified_at
++        ) VALUES (
++          ${food.id}, ${food.canonicalName}, ${sql.json(food.localNames as unknown as postgres.JSONValue)},
++          ${sql.json(food.aliases as unknown as postgres.JSONValue)}, ${sql.json(food.cuisineTags as unknown as postgres.JSONValue)}, ${food.category},
++          ${food.caloriesPer100g}, ${food.proteinPer100g}, ${food.carbsPer100g},
++          ${food.fatPer100g}, ${food.fiberPer100g}, ${sql.json(food.commonServings as unknown as postgres.JSONValue)},
++          ${food.source ?? null}, ${food.sourceVersion ?? null}, ${food.verifiedAt ?? null}
++        )
++        ON CONFLICT (id) DO UPDATE SET
++          canonical_name = EXCLUDED.canonical_name,
++          local_names = EXCLUDED.local_names,
++          aliases = EXCLUDED.aliases,
++          cuisine_tags = EXCLUDED.cuisine_tags,
++          category = EXCLUDED.category,
++          calories_per_100g = EXCLUDED.calories_per_100g,
++          protein_per_100g = EXCLUDED.protein_per_100g,
++          carbs_per_100g = EXCLUDED.carbs_per_100g,
++          fat_per_100g = EXCLUDED.fat_per_100g,
++          fiber_per_100g = EXCLUDED.fiber_per_100g,
++          common_servings = EXCLUDED.common_servings,
++          source = EXCLUDED.source,
++          source_version = EXCLUDED.source_version,
++          verified_at = EXCLUDED.verified_at,
++          updated_at = now()
++      `;
++      count++;
++    }
++
++    console.log(`✓ Seeded/updated ${count} foods in the database.`);
++  } finally {
++    await sql.end();
++  }
++}
++
++main().catch((err) => {
++  console.error('✖ Seed failed:', err);
++  process.exit(1);
++});
+diff --git a/database/migrations/0001_init.sql b/database/migrations/0001_init.sql
+new file mode 100644
+index 0000000..7af1d99
+--- /dev/null
++++ b/database/migrations/0001_init.sql
+@@ -0,0 +1,69 @@
++-- 0001_init.sql
++-- Core tables: subscribers, profiles, food_logs, diet_plans, weight_logs
++-- Matches apps/api/src/infrastructure/db/schema.ts exactly.
++
++CREATE TABLE IF NOT EXISTS subscribers (
++  id VARCHAR(64) PRIMARY KEY,
++  phone VARCHAR(32),
++  status VARCHAR(16) NOT NULL DEFAULT 'active',
++  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
++  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE TABLE IF NOT EXISTS profiles (
++  subscriber_id VARCHAR(64) PRIMARY KEY REFERENCES subscribers(id) ON DELETE CASCADE,
++  age INTEGER NOT NULL,
++  sex VARCHAR(16) NOT NULL,
++  height_cm DOUBLE PRECISION NOT NULL,
++  weight_kg DOUBLE PRECISION NOT NULL,
++  activity_level VARCHAR(32) NOT NULL,
++  goal VARCHAR(32) NOT NULL,
++  target_weight_kg DOUBLE PRECISION,
++  dietary_preferences JSONB,
++  cuisine_preference VARCHAR(32) NOT NULL DEFAULT 'mixed',
++  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE TABLE IF NOT EXISTS food_logs (
++  id VARCHAR(64) PRIMARY KEY,
++  subscriber_id VARCHAR(64) NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
++  logged_on VARCHAR(16) NOT NULL,
++  meal_slot VARCHAR(16) NOT NULL,
++  food_id VARCHAR(64) NOT NULL,
++  food_name VARCHAR(256),
++  quantity DOUBLE PRECISION NOT NULL,
++  unit VARCHAR(64) NOT NULL DEFAULT 'g',
++  calculated_nutrition JSONB NOT NULL,
++  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
++  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS food_logs_subscriber_date_idx
++  ON food_logs (subscriber_id, logged_on);
++
++CREATE TABLE IF NOT EXISTS diet_plans (
++  id VARCHAR(64) PRIMARY KEY,
++  subscriber_id VARCHAR(64) NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
++  version INTEGER NOT NULL DEFAULT 1,
++  calorie_target DOUBLE PRECISION NOT NULL,
++  protein_target_g DOUBLE PRECISION NOT NULL,
++  carbs_target_g DOUBLE PRECISION NOT NULL,
++  fat_target_g DOUBLE PRECISION NOT NULL,
++  plan_json JSONB NOT NULL,
++  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
++  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS diet_plans_subscriber_idx
++  ON diet_plans (subscriber_id);
++
++CREATE TABLE IF NOT EXISTS weight_logs (
++  id VARCHAR(64) PRIMARY KEY,
++  subscriber_id VARCHAR(64) NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
++  weight_kg DOUBLE PRECISION NOT NULL,
++  logged_on VARCHAR(16) NOT NULL,
++  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS weight_logs_subscriber_date_idx
++  ON weight_logs (subscriber_id, logged_on);
+diff --git a/database/migrations/0002_foods.sql b/database/migrations/0002_foods.sql
+new file mode 100644
+index 0000000..e5f0bc8
+--- /dev/null
++++ b/database/migrations/0002_foods.sql
+@@ -0,0 +1,28 @@
++-- 0002_foods.sql
++-- The universal food catalog table. Previously this data only ever lived
++-- in a static TypeScript file and an in-memory Map, so it never persisted
++-- and admin edits were lost on restart. This table is now the real source
++-- of truth; the static dataset becomes seed data only.
++
++CREATE TABLE IF NOT EXISTS foods (
++  id VARCHAR(64) PRIMARY KEY,
++  canonical_name VARCHAR(256) NOT NULL,
++  local_names JSONB NOT NULL DEFAULT '[]',
++  aliases JSONB NOT NULL DEFAULT '[]',
++  cuisine_tags JSONB NOT NULL DEFAULT '[]',
++  category VARCHAR(64) NOT NULL,
++  calories_per_100g DOUBLE PRECISION NOT NULL,
++  protein_per_100g DOUBLE PRECISION NOT NULL,
++  carbs_per_100g DOUBLE PRECISION NOT NULL,
++  fat_per_100g DOUBLE PRECISION NOT NULL,
++  fiber_per_100g DOUBLE PRECISION NOT NULL DEFAULT 0,
++  common_servings JSONB NOT NULL DEFAULT '[]',
++  source VARCHAR(128),
++  source_version VARCHAR(32),
++  verified_at VARCHAR(32),
++  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
++  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS foods_canonical_name_idx
++  ON foods (canonical_name);
+diff --git a/package.json b/package.json
+index 266b9e6..3947eac 100644
+--- a/package.json
++++ b/package.json
+@@ -17,6 +17,9 @@
+     "test:integration": "pnpm --filter @thali/api test",
+     "test:e2e": "playwright test",
+     "validate:food": "tsx scripts/validate-food-data.ts",
++    "db:migrate": "pnpm --filter @thali/api db:migrate",
++    "db:seed": "pnpm --filter @thali/api db:seed",
++    "db:setup": "pnpm db:migrate && pnpm db:seed",
+     "lint": "eslint .",
+     "format": "prettier --write .",
+     "format:check": "prettier --check ."
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 5780750..cc762fa 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -13,7 +13,7 @@ importers:
+         version: 1.63.0
+       eslint:
+         specifier: ^9.0.0
+-        version: 9.39.5(jiti@1.21.7)
++        version: 9.39.5(jiti@1.21.7)(supports-color@7.2.0)
+       globals:
+         specifier: ^15.9.0
+         version: 15.15.0
+@@ -28,7 +28,7 @@ importers:
+         version: 5.9.3
+       typescript-eslint:
+         specifier: ^8.7.0
+-        version: 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
++        version: 8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
+ 
+   apps/api:
+     dependencies:
+@@ -53,6 +53,9 @@ importers:
+       '@thali/types':
+         specifier: workspace:*
+         version: link:../../packages/types
++      dotenv:
++        specifier: ^16.4.5
++        version: 16.6.1
+       drizzle-orm:
+         specifier: ^0.45.2
+         version: 0.45.2(postgres@3.4.9)
+@@ -71,7 +74,7 @@ importers:
+         version: 5.9.3
+       vitest:
+         specifier: ^2.1.1
+-        version: 2.1.9(@types/node@22.20.1)
++        version: 2.1.9(@types/node@22.20.1)(supports-color@7.2.0)
+ 
+   apps/web:
+     dependencies:
+@@ -168,7 +171,7 @@ importers:
+         version: 5.9.3
+       vitest:
+         specifier: ^2.1.1
+-        version: 2.1.9(@types/node@22.20.1)
++        version: 2.1.9(@types/node@22.20.1)(supports-color@7.2.0)
+ 
+   packages/schemas:
+     dependencies:
+@@ -1125,6 +1128,10 @@ packages:
+   dlv@1.1.3:
+     resolution: {integrity: sha512-+HlytyjlPKnIG8XuRG8WvmBP8xs8P71y+SKKS6ZXWoEgLuePxtDoUEiH7WkdePWrQ5JBpE6aoVqfZfJUQkjXwA==}
+ 
++  dotenv@16.6.1:
++    resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
++    engines: {node: '>=12'}
++
+   drizzle-orm@0.45.2:
+     resolution: {integrity: sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==}
+     peerDependencies:
+@@ -2218,17 +2225,17 @@ snapshots:
+   '@esbuild/win32-x64@0.28.2':
+     optional: true
+ 
+-  '@eslint-community/eslint-utils@4.10.1(eslint@9.39.5(jiti@1.21.7))':
++  '@eslint-community/eslint-utils@4.10.1(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))':
+     dependencies:
+-      eslint: 9.39.5(jiti@1.21.7)
++      eslint: 9.39.5(jiti@1.21.7)(supports-color@7.2.0)
+       eslint-visitor-keys: 3.4.3
+ 
+   '@eslint-community/regexpp@4.12.2': {}
+ 
+-  '@eslint/config-array@0.21.2':
++  '@eslint/config-array@0.21.2(supports-color@7.2.0)':
+     dependencies:
+       '@eslint/object-schema': 2.1.7
+-      debug: 4.4.3
++      debug: 4.4.3(supports-color@7.2.0)
+       minimatch: 3.1.5
+     transitivePeerDependencies:
+       - supports-color
+@@ -2241,10 +2248,10 @@ snapshots:
+     dependencies:
+       '@types/json-schema': 7.0.15
+ 
+-  '@eslint/eslintrc@3.3.7':
++  '@eslint/eslintrc@3.3.7(supports-color@7.2.0)':
+     dependencies:
+       ajv: 6.15.0
+-      debug: 4.4.3
++      debug: 4.4.3(supports-color@7.2.0)
+       espree: 10.4.0
+       globals: 14.0.0
+       ignore: 5.3.2
+@@ -2482,15 +2489,15 @@ snapshots:
+       '@types/prop-types': 15.7.15
+       csstype: 3.2.3
+ 
+-  '@typescript-eslint/eslint-plugin@8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)':
++  '@typescript-eslint/eslint-plugin@8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)':
+     dependencies:
+       '@eslint-community/regexpp': 4.12.2
+-      '@typescript-eslint/parser': 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
++      '@typescript-eslint/parser': 8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
+       '@typescript-eslint/scope-manager': 8.70.0
+-      '@typescript-eslint/type-utils': 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
+-      '@typescript-eslint/utils': 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
++      '@typescript-eslint/type-utils': 8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
++      '@typescript-eslint/utils': 8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
+       '@typescript-eslint/visitor-keys': 8.70.0
+-      eslint: 9.39.5(jiti@1.21.7)
++      eslint: 9.39.5(jiti@1.21.7)(supports-color@7.2.0)
+       ignore: 7.0.9
+       natural-compare: 1.4.0
+       ts-api-utils: 2.5.0(typescript@5.9.3)
+@@ -2498,23 +2505,23 @@ snapshots:
+     transitivePeerDependencies:
+       - supports-color
+ 
+-  '@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)':
++  '@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)':
+     dependencies:
+       '@typescript-eslint/scope-manager': 8.70.0
+       '@typescript-eslint/types': 8.70.0
+-      '@typescript-eslint/typescript-estree': 8.70.0(typescript@5.9.3)
++      '@typescript-eslint/typescript-estree': 8.70.0(supports-color@7.2.0)(typescript@5.9.3)
+       '@typescript-eslint/visitor-keys': 8.70.0
+-      debug: 4.4.3
+-      eslint: 9.39.5(jiti@1.21.7)
++      debug: 4.4.3(supports-color@7.2.0)
++      eslint: 9.39.5(jiti@1.21.7)(supports-color@7.2.0)
+       typescript: 5.9.3
+     transitivePeerDependencies:
+       - supports-color
+ 
+-  '@typescript-eslint/project-service@8.70.0(typescript@5.9.3)':
++  '@typescript-eslint/project-service@8.70.0(supports-color@7.2.0)(typescript@5.9.3)':
+     dependencies:
+       '@typescript-eslint/tsconfig-utils': 8.70.0(typescript@5.9.3)
+       '@typescript-eslint/types': 8.70.0
+-      debug: 4.4.3
++      debug: 4.4.3(supports-color@7.2.0)
+       typescript: 5.9.3
+     transitivePeerDependencies:
+       - supports-color
+@@ -2528,13 +2535,13 @@ snapshots:
+     dependencies:
+       typescript: 5.9.3
+ 
+-  '@typescript-eslint/type-utils@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)':
++  '@typescript-eslint/type-utils@8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)':
+     dependencies:
+       '@typescript-eslint/types': 8.70.0
+-      '@typescript-eslint/typescript-estree': 8.70.0(typescript@5.9.3)
+-      '@typescript-eslint/utils': 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
+-      debug: 4.4.3
+-      eslint: 9.39.5(jiti@1.21.7)
++      '@typescript-eslint/typescript-estree': 8.70.0(supports-color@7.2.0)(typescript@5.9.3)
++      '@typescript-eslint/utils': 8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
++      debug: 4.4.3(supports-color@7.2.0)
++      eslint: 9.39.5(jiti@1.21.7)(supports-color@7.2.0)
+       ts-api-utils: 2.5.0(typescript@5.9.3)
+       typescript: 5.9.3
+     transitivePeerDependencies:
+@@ -2542,13 +2549,13 @@ snapshots:
+ 
+   '@typescript-eslint/types@8.70.0': {}
+ 
+-  '@typescript-eslint/typescript-estree@8.70.0(typescript@5.9.3)':
++  '@typescript-eslint/typescript-estree@8.70.0(supports-color@7.2.0)(typescript@5.9.3)':
+     dependencies:
+-      '@typescript-eslint/project-service': 8.70.0(typescript@5.9.3)
++      '@typescript-eslint/project-service': 8.70.0(supports-color@7.2.0)(typescript@5.9.3)
+       '@typescript-eslint/tsconfig-utils': 8.70.0(typescript@5.9.3)
+       '@typescript-eslint/types': 8.70.0
+       '@typescript-eslint/visitor-keys': 8.70.0
+-      debug: 4.4.3
++      debug: 4.4.3(supports-color@7.2.0)
+       minimatch: 10.2.6
+       semver: 7.8.5
+       tinyglobby: 0.2.17
+@@ -2557,13 +2564,13 @@ snapshots:
+     transitivePeerDependencies:
+       - supports-color
+ 
+-  '@typescript-eslint/utils@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)':
++  '@typescript-eslint/utils@8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)':
+     dependencies:
+-      '@eslint-community/eslint-utils': 4.10.1(eslint@9.39.5(jiti@1.21.7))
++      '@eslint-community/eslint-utils': 4.10.1(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))
+       '@typescript-eslint/scope-manager': 8.70.0
+       '@typescript-eslint/types': 8.70.0
+-      '@typescript-eslint/typescript-estree': 8.70.0(typescript@5.9.3)
+-      eslint: 9.39.5(jiti@1.21.7)
++      '@typescript-eslint/typescript-estree': 8.70.0(supports-color@7.2.0)(typescript@5.9.3)
++      eslint: 9.39.5(jiti@1.21.7)(supports-color@7.2.0)
+       typescript: 5.9.3
+     transitivePeerDependencies:
+       - supports-color
+@@ -2764,9 +2771,11 @@ snapshots:
+ 
+   csstype@3.2.3: {}
+ 
+-  debug@4.4.3:
++  debug@4.4.3(supports-color@7.2.0):
+     dependencies:
+       ms: 2.1.3
++    optionalDependencies:
++      supports-color: 7.2.0
+ 
+   deep-eql@5.0.2: {}
+ 
+@@ -2785,6 +2794,8 @@ snapshots:
+ 
+   dlv@1.1.3: {}
+ 
++  dotenv@16.6.1: {}
++
+   drizzle-orm@0.45.2(postgres@3.4.9):
+     optionalDependencies:
+       postgres: 3.4.9
+@@ -2865,14 +2876,14 @@ snapshots:
+ 
+   eslint-visitor-keys@5.0.1: {}
+ 
+-  eslint@9.39.5(jiti@1.21.7):
++  eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0):
+     dependencies:
+-      '@eslint-community/eslint-utils': 4.10.1(eslint@9.39.5(jiti@1.21.7))
++      '@eslint-community/eslint-utils': 4.10.1(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))
+       '@eslint-community/regexpp': 4.12.2
+-      '@eslint/config-array': 0.21.2
++      '@eslint/config-array': 0.21.2(supports-color@7.2.0)
+       '@eslint/config-helpers': 0.4.2
+       '@eslint/core': 0.17.0
+-      '@eslint/eslintrc': 3.3.7
++      '@eslint/eslintrc': 3.3.7(supports-color@7.2.0)
+       '@eslint/js': 9.39.5
+       '@eslint/plugin-kit': 0.4.1
+       '@humanfs/node': 0.16.8
+@@ -2882,7 +2893,7 @@ snapshots:
+       ajv: 6.15.0
+       chalk: 4.1.2
+       cross-spawn: 7.0.6
+-      debug: 4.4.3
++      debug: 4.4.3(supports-color@7.2.0)
+       escape-string-regexp: 4.0.0
+       eslint-scope: 8.4.0
+       eslint-visitor-keys: 4.2.1
+@@ -3537,13 +3548,13 @@ snapshots:
+     dependencies:
+       prelude-ls: 1.2.1
+ 
+-  typescript-eslint@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3):
++  typescript-eslint@8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3):
+     dependencies:
+-      '@typescript-eslint/eslint-plugin': 8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
+-      '@typescript-eslint/parser': 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
+-      '@typescript-eslint/typescript-estree': 8.70.0(typescript@5.9.3)
+-      '@typescript-eslint/utils': 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
+-      eslint: 9.39.5(jiti@1.21.7)
++      '@typescript-eslint/eslint-plugin': 8.70.0(@typescript-eslint/parser@8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3))(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
++      '@typescript-eslint/parser': 8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
++      '@typescript-eslint/typescript-estree': 8.70.0(supports-color@7.2.0)(typescript@5.9.3)
++      '@typescript-eslint/utils': 8.70.0(eslint@9.39.5(jiti@1.21.7)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
++      eslint: 9.39.5(jiti@1.21.7)(supports-color@7.2.0)
+       typescript: 5.9.3
+     transitivePeerDependencies:
+       - supports-color
+@@ -3564,10 +3575,10 @@ snapshots:
+ 
+   util-deprecate@1.0.2: {}
+ 
+-  vite-node@2.1.9(@types/node@22.20.1):
++  vite-node@2.1.9(@types/node@22.20.1)(supports-color@7.2.0):
+     dependencies:
+       cac: 6.7.14
+-      debug: 4.4.3
++      debug: 4.4.3(supports-color@7.2.0)
+       es-module-lexer: 1.7.0
+       pathe: 1.1.2
+       vite: 5.4.21(@types/node@22.20.1)
+@@ -3591,7 +3602,7 @@ snapshots:
+       '@types/node': 22.20.1
+       fsevents: 2.3.3
+ 
+-  vitest@2.1.9(@types/node@22.20.1):
++  vitest@2.1.9(@types/node@22.20.1)(supports-color@7.2.0):
+     dependencies:
+       '@vitest/expect': 2.1.9
+       '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.20.1))
+@@ -3601,7 +3612,7 @@ snapshots:
+       '@vitest/spy': 2.1.9
+       '@vitest/utils': 2.1.9
+       chai: 5.3.3
+-      debug: 4.4.3
++      debug: 4.4.3(supports-color@7.2.0)
+       expect-type: 1.4.0
+       magic-string: 0.30.21
+       pathe: 1.1.2
+@@ -3611,7 +3622,7 @@ snapshots:
+       tinypool: 1.1.1
+       tinyrainbow: 1.2.0
+       vite: 5.4.21(@types/node@22.20.1)
+-      vite-node: 2.1.9(@types/node@22.20.1)
++      vite-node: 2.1.9(@types/node@22.20.1)(supports-color@7.2.0)
+       why-is-node-running: 2.3.0
+     optionalDependencies:
+       '@types/node': 22.20.1
+diff --git a/tests/integration/api-diet-plan.test.ts b/tests/integration/api-diet-plan.test.ts
+index 7a402ee..2f0dffd 100644
+--- a/tests/integration/api-diet-plan.test.ts
++++ b/tests/integration/api-diet-plan.test.ts
+@@ -6,6 +6,7 @@ import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/pr
+ import { InMemoryFoodLogRepository } from '../../apps/api/src/modules/food-log/food-log.repository.js';
+ import { InMemoryDietPlanRepository } from '../../apps/api/src/modules/diet-plan/diet-plan.repository.js';
+ import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
++import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
+ 
+ describe('API Integration: Diet Plan Generation & Meal Customization', () => {
+   let app: FastifyInstance;
+@@ -22,7 +23,8 @@ describe('API Integration: Diet Plan Generation & Meal Customization', () => {
+     profileRepo = new InMemoryProfileRepository();
+     foodLogRepo = new InMemoryFoodLogRepository();
+     dietPlanRepo = new InMemoryDietPlanRepository();
+-    foodService = new FoodService();
++    foodService = new FoodService(new InMemoryFoodRepository());
++    await foodService.init();
+ 
+     app = await buildApp({
+       subscriberRepo,
+diff --git a/tests/integration/api-food-log.test.ts b/tests/integration/api-food-log.test.ts
+index c205cb1..842cfd2 100644
+--- a/tests/integration/api-food-log.test.ts
++++ b/tests/integration/api-food-log.test.ts
+@@ -5,6 +5,7 @@ import { InMemorySubscriberRepository } from '../../apps/api/src/modules/subscri
+ import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/profile.repository.js';
+ import { InMemoryFoodLogRepository } from '../../apps/api/src/modules/food-log/food-log.repository.js';
+ import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
++import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
+ 
+ describe('API Integration: Food Search & Food Logging Modules', () => {
+   let app: FastifyInstance;
+@@ -17,7 +18,8 @@ describe('API Integration: Food Search & Food Logging Modules', () => {
+     subscriberRepo = new InMemorySubscriberRepository();
+     profileRepo = new InMemoryProfileRepository();
+     foodLogRepo = new InMemoryFoodLogRepository();
+-    foodService = new FoodService();
++    foodService = new FoodService(new InMemoryFoodRepository());
++    await foodService.init();
+ 
+     app = await buildApp({
+       subscriberRepo,
+diff --git a/tests/integration/api-progress-admin.test.ts b/tests/integration/api-progress-admin.test.ts
+index 06f9e20..2bf9019 100644
+--- a/tests/integration/api-progress-admin.test.ts
++++ b/tests/integration/api-progress-admin.test.ts
+@@ -6,6 +6,7 @@ import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/pr
+ import { InMemoryFoodLogRepository } from '../../apps/api/src/modules/food-log/food-log.repository.js';
+ import { InMemoryWeightLogRepository } from '../../apps/api/src/modules/progress/progress.repository.js';
+ import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
++import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
+ 
+ describe('API Integration: Progress Tracking & Admin Food Management', () => {
+   let app: FastifyInstance;
+@@ -22,7 +23,8 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
+     profileRepo = new InMemoryProfileRepository();
+     foodLogRepo = new InMemoryFoodLogRepository();
+     weightLogRepo = new InMemoryWeightLogRepository();
+-    foodService = new FoodService();
++    foodService = new FoodService(new InMemoryFoodRepository());
++    await foodService.init();
+ 
+     app = await buildApp({
+       subscriberRepo,
+-- 
+2.43.0
+

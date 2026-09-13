@@ -9,7 +9,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "db:migrate": "tsx src/scripts/migrate.ts",
+    "db:seed": "tsx src/scripts/seed-food-data.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
@@ -19,6 +21,7 @@
     "@thali/nutrition-engine": "workspace:*",
     "@thali/schemas": "workspace:*",
     "@thali/types": "workspace:*",
+    "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.12.3",
     "postgres": "^3.4.9"
