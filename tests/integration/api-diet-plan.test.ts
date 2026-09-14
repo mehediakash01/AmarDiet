@@ -110,6 +110,78 @@ describe('API Integration: Diet Plan Generation & Meal Customization', () => {
       expect(targetCalories[3]).toBeLessThan(targetCalories[2]); // build_muscle (+200) < gain_weight (+300)
     });
 
+    it('scales actual food QUANTITIES (not just targets) between a low-calorie and high-calorie goal', async () => {
+      // Same age/height/activity/cuisine so the only real difference is goal —
+      // isolates whether portions genuinely respond to the target, rather
+      // than being a fixed template regardless of goal.
+      const baseProfile = {
+        age: 28,
+        sex: 'male' as const,
+        height_cm: 180,
+        weight_kg: 80,
+        activity_level: 'active' as const,
+        cuisine_preference: 'bengali' as const,
+      };
+
+      const loseId = 'sub-scale-lose';
+      const gainId = 'sub-scale-gain';
+
+      await subscriberRepo.create({ id: loseId });
+      await profileRepo.upsert({ ...baseProfile, subscriberId: loseId, goal: 'lose_weight' });
+
+      await subscriberRepo.create({ id: gainId });
+      await profileRepo.upsert({ ...baseProfile, subscriberId: gainId, goal: 'build_muscle' });
+
+      const loseRes = await app.inject({
+        method: 'POST',
+        url: '/api/diet-plan/generate',
+        payload: { subscriberId: loseId },
+      });
+      const gainRes = await app.inject({
+        method: 'POST',
+        url: '/api/diet-plan/generate',
+        payload: { subscriberId: gainId },
+      });
+
+      const losePlan = JSON.parse(loseRes.body);
+      const gainPlan = JSON.parse(gainRes.body);
+
+      const loseLunch = losePlan.days[0].meals.find(
+        (m: { mealSlot: string }) => m.mealSlot === 'lunch',
+      );
+      const gainLunch = gainPlan.days[0].meals.find(
+        (m: { mealSlot: string }) => m.mealSlot === 'lunch',
+      );
+
+      // The core fix: build_muscle's lunch should carry meaningfully more
+      // total quantity (grams) than lose_weight's lunch, not identical
+      // portions with a deviation note bolted on.
+      const loseTotalGrams = loseLunch.items.reduce(
+        (sum: number, i: { quantity: number }) => sum + i.quantity,
+        0,
+      );
+      const gainTotalGrams = gainLunch.items.reduce(
+        (sum: number, i: { quantity: number }) => sum + i.quantity,
+        0,
+      );
+      expect(gainTotalGrams).toBeGreaterThan(loseTotalGrams);
+
+      // And each meal's actual subtotal should land reasonably close to
+      // its own target — proving the scaling is actually solving for the
+      // target, not just picking fixed food regardless of it.
+      const loseSubtotalRatio = loseLunch.subtotal.calories / loseLunch.targetNutrition.calories;
+      const gainSubtotalRatio = gainLunch.subtotal.calories / gainLunch.targetNutrition.calories;
+      expect(loseSubtotalRatio).toBeGreaterThan(0.85);
+      expect(loseSubtotalRatio).toBeLessThan(1.15);
+      expect(gainSubtotalRatio).toBeGreaterThan(0.85);
+      expect(gainSubtotalRatio).toBeLessThan(1.15);
+
+      // Muscle-building protein target should be meaningfully higher, and
+      // the plan should actually deliver closer to it (protein-role boost).
+      expect(gainLunch.targetNutrition.protein).toBeGreaterThan(loseLunch.targetNutrition.protein);
+      expect(gainLunch.subtotal.protein).toBeGreaterThan(loseLunch.subtotal.protein);
+    });
+
     it('GET /api/diet-plan/:subscriberId retrieves active plan', async () => {
       // First generate
       await app.inject({
