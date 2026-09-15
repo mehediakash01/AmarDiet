@@ -1,7 +1,15 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Navbar } from '../components/Navbar';
-import { FoodSearchModal } from '../features/food-search/FoodSearchModal';
+// Self-hosted Bengali fonts (bundled at build time, no live fetch to
+// Google's CDN required) — more robust than next/font/google for
+// deployment targets with uncertain outbound network access at build time.
+import '@fontsource/noto-sans-bengali/400.css';
+import '@fontsource/noto-sans-bengali/500.css';
+import '@fontsource/noto-sans-bengali/600.css';
+import '@fontsource/noto-sans-bengali/700.css';
+import '@fontsource/noto-serif-bengali/500.css';
+import '@fontsource/noto-serif-bengali/600.css';
+import '@fontsource/noto-serif-bengali/700.css';
 
 export const metadata: Metadata = {
   title: {
@@ -18,13 +26,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="bn">
       <body className="bg-background text-dark min-h-screen flex flex-col font-sans">
-        <Navbar />
-        <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">
-          {children}
-        </main>
-        <FoodSearchModal />
+        {children}
       </body>
     </html>
   );

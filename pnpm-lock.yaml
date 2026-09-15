@@ -78,6 +78,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@fontsource/noto-sans-bengali':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/noto-serif-bengali':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@thali/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -553,6 +559,12 @@ packages:
 
   '@fastify/rate-limit@11.2.0':
     resolution: {integrity: sha512-X7osJd4XSvMoejYrnJkSZYYjY1eNYoBqhjlzf1RakC2204qExFqZFTKj5+T7VuzA/iUI9Z3UoSqQRkB2HpG0oQ==}
+
+  '@fontsource/noto-sans-bengali@5.3.0':
+    resolution: {integrity: sha512-EFBMU0UvzyFSc1ERK369zfqEu6DMRuWmCQ2+2ahhQTQAIDPEyN1UYlQdQeFkheu2DWG2hfdwrhiLlGFl2sSr/A==}
+
+  '@fontsource/noto-serif-bengali@5.3.0':
+    resolution: {integrity: sha512-CTEX03yqXP5A1GZUHiNOgNoHBWcwfrc7JskLSseAcOVMxopD8Wgc32naa58YRhMhXeZZoyoCjhfODwOiIxAQyA==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2305,6 +2317,10 @@ snapshots:
       fastify-plugin: 6.0.0
       ip-address: 10.7.0
       toad-cache: 3.7.4
+
+  '@fontsource/noto-sans-bengali@5.3.0': {}
+
+  '@fontsource/noto-serif-bengali@5.3.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:
