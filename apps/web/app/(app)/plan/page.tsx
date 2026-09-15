@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, X, RefreshCw, Sparkles, CheckCircle2 } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
-import { useNutritionStore } from '../../lib/store/useNutritionStore';
+import { useNutritionStore } from '@/lib/store/useNutritionStore';
 
 export default function DietPlanPage() {
   const profile = useNutritionStore((s) => s.profile);

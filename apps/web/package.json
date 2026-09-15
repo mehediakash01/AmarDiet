@@ -11,6 +11,8 @@
     "next:build": "next build"
   },
   "dependencies": {
+    "@fontsource/noto-sans-bengali": "^5.3.0",
+    "@fontsource/noto-serif-bengali": "^5.3.0",
     "@thali/domain": "workspace:*",
     "@thali/food-data": "workspace:*",
     "@thali/nutrition-engine": "workspace:*",

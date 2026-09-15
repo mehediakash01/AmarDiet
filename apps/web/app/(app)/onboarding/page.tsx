@@ -1,4 +1,4 @@
-import { OnboardingFlow } from '../../features/onboarding/OnboardingFlow';
+import { OnboardingFlow } from '@/features/onboarding/OnboardingFlow';
 
 export const metadata = {
   title: 'Onboarding & Nutrition Profile',
