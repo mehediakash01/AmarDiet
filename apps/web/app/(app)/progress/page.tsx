@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Scale, CheckCircle2, Circle, TrendingDown, TrendingUp, Plus, Calendar } from 'lucide-react';
 import type { ProgressSummary, WeightLog } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
+import { getApiBaseUrl } from '@/lib/identity/subscriberId';
 
 export default function ProgressPage() {
   const subscriberId = useNutritionStore((s) => s.subscriberId);
@@ -50,7 +51,7 @@ export default function ProgressPage() {
     setIsSubmitting(false);
 
     try {
-      await fetch('http://localhost:3001/api/progress/weight', {
+      await fetch(`${getApiBaseUrl()}/api/progress/weight`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscriberId, weight_kg: val, loggedOn: dateInput }),

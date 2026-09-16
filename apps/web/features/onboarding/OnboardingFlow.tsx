@@ -16,6 +16,7 @@ export function OnboardingFlow() {
   const router = useRouter();
   const setProfile = useNutritionStore((s) => s.setProfile);
   const currentProfile = useNutritionStore((s) => s.profile);
+  const subscriberId = useNutritionStore((s) => s.subscriberId);
 
   const [step, setStep] = useState<number>(1);
 
@@ -36,7 +37,7 @@ export function OnboardingFlow() {
   );
 
   const draftProfile: UserProfile = useMemo(() => ({
-    subscriberId: currentProfile?.subscriberId || 'default-user',
+    subscriberId,
     age,
     sex,
     height_cm: heightCm,
@@ -46,7 +47,7 @@ export function OnboardingFlow() {
     target_weight_kg: targetWeightKg,
     cuisine_preference: cuisinePreference,
     updated_at: new Date().toISOString(),
-  }), [age, sex, heightCm, weightKg, activityLevel, goal, targetWeightKg, cuisinePreference, currentProfile]);
+  }), [subscriberId, age, sex, heightCm, weightKg, activityLevel, goal, targetWeightKg, cuisinePreference]);
 
   const liveNutrition = useMemo(() => computeLocalNutrition(draftProfile), [draftProfile]);
 
