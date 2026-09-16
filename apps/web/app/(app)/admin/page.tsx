@@ -5,6 +5,7 @@ import { Plus, Search, Check, UtensilsCrossed, ShieldAlert } from 'lucide-react'
 import type { FoodItem } from '@thali/types';
 import { FOOD_DATASET } from '@thali/food-data';
 import { db } from '@/lib/db/db';
+import { getApiBaseUrl } from '@/lib/identity/subscriberId';
 
 export default function AdminCatalogPage() {
   const [foods, setFoods] = useState<FoodItem[]>(FOOD_DATASET);
@@ -94,7 +95,7 @@ export default function AdminCatalogPage() {
       // 1. Add to Dexie local DB for immediate local search
       await db.foods.put(newFood);
       // 2. Post to API
-      await fetch('http://localhost:3001/api/admin/foods', {
+      await fetch(`${getApiBaseUrl()}/api/admin/foods`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newFood),

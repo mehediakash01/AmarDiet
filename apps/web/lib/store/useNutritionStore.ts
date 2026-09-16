@@ -2,17 +2,15 @@ import { create } from 'zustand';
 import type {
   CalculatedNutrition,
   DietPlan,
-  DietPlanDay,
   DietPlanItem,
-  DietPlanMeal,
   FoodItem,
-  FoodLogEntry,
   MealSlot,
   NutritionTargets,
   UserProfile,
 } from '@thali/types';
 import { db, type LocalFoodLogEntry } from '../db/db';
 import { syncEngine } from '../sync/syncEngine';
+import { getOrCreateSubscriberId, getApiBaseUrl } from '../identity/subscriberId';
 import {
   calculateBMR,
   calculateTDEE,
@@ -53,6 +51,7 @@ export function computeLocalNutrition(profile: UserProfile): NutritionTargets {
 
 export interface NutritionState {
   subscriberId: string;
+  isSubscriberReady: boolean;
   profile: UserProfile | null;
   nutrition: NutritionTargets | null;
   selectedDate: string; // YYYY-MM-DD
@@ -63,8 +62,10 @@ export interface NutritionState {
   dailyLogs: LocalFoodLogEntry[];
   activePlan: DietPlan | null;
   isLoading: boolean;
+  planError: string | null;
 
   // Actions
+  initSubscriber: () => Promise<void>;
   setSubscriberId: (id: string) => void;
   setProfile: (profile: UserProfile) => Promise<void>;
   setSelectedDate: (date: string) => void;
@@ -96,19 +97,6 @@ function getTodayString(): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
-
-const DEFAULT_PROFILE: UserProfile = {
-  subscriberId: 'default-user',
-  age: 26,
-  sex: 'male',
-  height_cm: 175,
-  weight_kg: 72,
-  activity_level: 'lightly_active',
-  goal: 'lose_weight',
-  target_weight_kg: 68,
-  cuisine_preference: 'bengali',
-  updated_at: new Date().toISOString(),
-};
 
 function calculateNutritionHelper(food: FoodItem, quantity: number, unit: string): CalculatedNutrition {
   let totalGrams = quantity;
@@ -145,9 +133,10 @@ function sumNutr(items: CalculatedNutrition[]): CalculatedNutrition {
 }
 
 export const useNutritionStore = create<NutritionState>((set, get) => ({
-  subscriberId: 'default-user',
-  profile: DEFAULT_PROFILE,
-  nutrition: computeLocalNutrition(DEFAULT_PROFILE),
+  subscriberId: '',
+  isSubscriberReady: false,
+  profile: null,
+  nutrition: null,
   selectedDate: getTodayString(),
   isSearchModalOpen: false,
   searchContext: 'log',
@@ -156,14 +145,37 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   dailyLogs: [],
   activePlan: null,
   isLoading: false,
+  planError: null,
+
+  initSubscriber: async () => {
+    const id = await getOrCreateSubscriberId();
+    set({ subscriberId: id, isSubscriberReady: true });
+    await get().loadProfile();
+  },
 
   setSubscriberId: (id: string) => set({ subscriberId: id }),
 
   setProfile: async (profile: UserProfile) => {
     const nutrition = computeLocalNutrition(profile);
     set({ profile, nutrition });
+
     if (typeof window !== 'undefined') {
       await db.cachedProfile.put(profile);
+    }
+
+    // Write through to the real account. Local cache above already made
+    // this responsive; if the server write fails (offline), the user's
+    // local data is still correct — they just won't have it on another
+    // device until this succeeds. Not retried/queued yet, unlike food
+    // logs — worth adding if this turns out to matter in practice.
+    try {
+      await fetch(`${getApiBaseUrl()}/api/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      });
+    } catch (e) {
+      console.error('Failed to save profile to server (saved locally only):', e);
     }
   },
 
@@ -191,16 +203,39 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   loadProfile: async () => {
     if (typeof window === 'undefined') return;
+    const { subscriberId } = get();
+    if (!subscriberId) return;
+
     try {
-      const cached = await db.cachedProfile.get(get().subscriberId);
-      if (cached) {
-        set({
-          profile: cached,
-          nutrition: computeLocalNutrition(cached),
-        });
+      const res = await fetch(`${getApiBaseUrl()}/api/profile/${subscriberId}`);
+      if (res.ok) {
+        const result = await res.json();
+        const profile: UserProfile = { ...result.profile, subscriberId };
+        set({ profile, nutrition: result.nutrition });
+        await db.cachedProfile.put(profile);
+        return;
+      }
+      if (res.status === 404) {
+        // No profile saved yet for this subscriber — expected for a brand
+        // new account before onboarding completes. Not an error.
+        set({ profile: null, nutrition: null });
+        return;
       }
     } catch (e) {
+      console.error('Could not reach server for profile, falling back to local cache:', e);
+    }
+
+    // Only reached on an actual network failure, not a normal "no profile
+    // yet" 404 — fall back to whatever was last cached on this device.
+    try {
+      const cached = await db.cachedProfile.get(subscriberId);
+      set({
+        profile: cached ?? null,
+        nutrition: cached ? computeLocalNutrition(cached) : null,
+      });
+    } catch (e) {
       console.error('Failed to load cached profile:', e);
+      set({ profile: null, nutrition: null });
     }
   },
 
@@ -307,151 +342,66 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   loadPlan: async () => {
     const { subscriberId } = get();
+    if (!subscriberId) return;
+    set({ isLoading: true, planError: null });
     try {
-      const res = await fetch(`http://localhost:3001/api/diet-plan/${subscriberId}`);
+      const res = await fetch(`${getApiBaseUrl()}/api/diet-plan/${subscriberId}`);
       if (res.ok) {
         const plan = await res.json();
-        set({ activePlan: plan });
+        set({ activePlan: plan, isLoading: false });
         return;
       }
-    } catch {
-      // offline / mock fallback
-    }
-
-    if (!get().activePlan) {
-      await get().generatePlan();
+      if (res.status === 404) {
+        // No plan generated yet for this subscriber — go generate one,
+        // this is expected for a new account, not an error.
+        set({ isLoading: false });
+        await get().generatePlan();
+        return;
+      }
+      set({
+        isLoading: false,
+        planError: `Couldn't load your plan (server responded ${res.status}). Please try again.`,
+      });
+    } catch (e) {
+      console.error('Failed to load diet plan:', e);
+      set({
+        isLoading: false,
+        planError: "Couldn't reach the server to load your plan. Check your connection and try again.",
+      });
     }
   },
 
   generatePlan: async () => {
     const { subscriberId } = get();
+    if (!subscriberId) return;
+    set({ isLoading: true, planError: null });
     try {
-      const res = await fetch('http://localhost:3001/api/diet-plan/generate', {
+      const res = await fetch(`${getApiBaseUrl()}/api/diet-plan/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscriberId }),
       });
       if (res.ok) {
         const plan = await res.json();
-        set({ activePlan: plan });
+        set({ activePlan: plan, isLoading: false });
         return;
       }
-    } catch {
-      // offline fallback generation
+      set({
+        isLoading: false,
+        planError: `Couldn't generate your plan (server responded ${res.status}). Please try again.`,
+      });
+    } catch (e) {
+      console.error('Failed to generate diet plan:', e);
+      // Honest failure — no fabricated plan. Showing invented food and
+      // numbers here would look identical to a real plan while being
+      // completely made up, which is worse than a clear error the user
+      // can retry.
+      set({
+        isLoading: false,
+        planError:
+          "Couldn't reach the server to build your plan. Check your connection and try again.",
+      });
     }
-
-    // Client-side fallback generator
-    const profile = get().profile || DEFAULT_PROFILE;
-    const nutrition = get().nutrition || computeLocalNutrition(profile);
-    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-    const mockPlan: DietPlan = {
-      id: `plan_local_${Date.now()}`,
-      subscriberId,
-      version: 1,
-      calorieTarget: nutrition.calorieTarget,
-      proteinTarget_g: nutrition.macros.protein_g,
-      carbsTarget_g: nutrition.macros.carbs_g,
-      fatTarget_g: nutrition.macros.fat_g,
-      days: daysOfWeek.map((day) => ({
-        day,
-        meals: [
-          {
-            mealSlot: 'breakfast',
-            isCustomized: false,
-            items: [
-              {
-                foodId: 'food_bengali_ruti',
-                foodName: 'Handmade Whole Wheat Roti',
-                quantity: 80,
-                unit: 'g',
-                calculatedNutrition: { calories: 211.2, protein: 7.3, carbs: 42.8, fat: 1.1, fiber: 5.4 },
-              },
-              {
-                foodId: 'food_bengali_dimer_dalna',
-                foodName: 'Bengali Egg Curry',
-                quantity: 130,
-                unit: 'g',
-                calculatedNutrition: { calories: 175.5, protein: 11.1, carbs: 8.1, fat: 10.9, fiber: 1.4 },
-              },
-            ],
-            subtotal: { calories: 386.7, protein: 18.4, carbs: 50.9, fat: 12.0, fiber: 6.8 },
-            targetNutrition: { calories: Math.round(nutrition.calorieTarget * 0.25), protein: 30, carbs: 50, fat: 12, fiber: 0 },
-          },
-          {
-            mealSlot: 'lunch',
-            isCustomized: false,
-            items: [
-              {
-                foodId: 'food_bengali_sada_bhat',
-                foodName: 'Steamed White Rice',
-                quantity: 200,
-                unit: 'g',
-                calculatedNutrition: { calories: 260, protein: 5.4, carbs: 56.4, fat: 0.6, fiber: 0.8 },
-              },
-              {
-                foodId: 'food_bengali_moshur_dal',
-                foodName: 'Bengali Red Lentil Dal',
-                quantity: 150,
-                unit: 'g',
-                calculatedNutrition: { calories: 127.5, protein: 8.3, carbs: 18.0, fat: 2.7, fiber: 3.2 },
-              },
-              {
-                foodId: 'food_bengali_rui_macher_jhol',
-                foodName: 'Rohu Fish Curry',
-                quantity: 120,
-                unit: 'g',
-                calculatedNutrition: { calories: 150, protein: 17.4, carbs: 3.8, fat: 7.2, fiber: 1.0 },
-              },
-            ],
-            subtotal: { calories: 537.5, protein: 31.1, carbs: 78.2, fat: 10.5, fiber: 5.0 },
-            targetNutrition: { calories: Math.round(nutrition.calorieTarget * 0.35), protein: 45, carbs: 70, fat: 15, fiber: 0 },
-          },
-          {
-            mealSlot: 'dinner',
-            isCustomized: false,
-            items: [
-              {
-                foodId: 'food_bengali_ruti',
-                foodName: 'Handmade Whole Wheat Roti',
-                quantity: 80,
-                unit: 'g',
-                calculatedNutrition: { calories: 211.2, protein: 7.3, carbs: 42.8, fat: 1.1, fiber: 5.4 },
-              },
-              {
-                foodId: 'food_bengali_murgir_jhol',
-                foodName: 'Bengali Chicken Curry',
-                quantity: 150,
-                unit: 'g',
-                calculatedNutrition: { calories: 217.5, protein: 22.8, carbs: 7.2, fat: 11.0, fiber: 1.4 },
-              },
-            ],
-            subtotal: { calories: 428.7, protein: 30.1, carbs: 50.0, fat: 12.1, fiber: 6.8 },
-            targetNutrition: { calories: Math.round(nutrition.calorieTarget * 0.30), protein: 40, carbs: 60, fat: 14, fiber: 0 },
-          },
-          {
-            mealSlot: 'snack',
-            isCustomized: false,
-            items: [
-              {
-                foodId: 'food_generic_banana',
-                foodName: 'Fresh Banana',
-                quantity: 118,
-                unit: 'g',
-                calculatedNutrition: { calories: 105, protein: 1.3, carbs: 26.9, fat: 0.4, fiber: 3.1 },
-              },
-            ],
-            subtotal: { calories: 105, protein: 1.3, carbs: 26.9, fat: 0.4, fiber: 3.1 },
-            targetNutrition: { calories: Math.round(nutrition.calorieTarget * 0.10), protein: 5, carbs: 20, fat: 4, fiber: 0 },
-          },
-        ],
-        totals: { calories: 1457.9, protein: 80.9, carbs: 206.0, fat: 35.0, fiber: 21.7 },
-      })),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    set({ activePlan: mockPlan });
   },
 
   addPlanItem: async (food: FoodItem, quantity: number, unit = 'g') => {
@@ -459,7 +409,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     if (!activePlan || !activePlanDay) return;
 
     try {
-      const res = await fetch('http://localhost:3001/api/diet-plan/item/add', {
+      const res = await fetch(`${getApiBaseUrl()}/api/diet-plan/item/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -523,7 +473,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     if (!activePlan) return;
 
     try {
-      const res = await fetch('http://localhost:3001/api/diet-plan/item/remove', {
+      const res = await fetch(`${getApiBaseUrl()}/api/diet-plan/item/remove`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
