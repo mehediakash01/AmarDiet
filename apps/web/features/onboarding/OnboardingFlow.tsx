@@ -10,6 +10,7 @@ import {
   UserProfile,
 } from '@thali/types';
 import { useNutritionStore, computeLocalNutrition } from '../../lib/store/useNutritionStore';
+import { BmiSpectrumChart } from '../../components/BmiSpectrumChart';
 import { Check, ArrowRight, ArrowLeft } from 'lucide-react';
 
 export function OnboardingFlow() {
@@ -354,6 +355,9 @@ export function OnboardingFlow() {
                 <div className="text-[10px] text-primary">kcal/day</div>
               </div>
             </div>
+
+            {/* Visual BMI Spectrum Chart */}
+            <BmiSpectrumChart heightCm={heightCm} weightKg={weightKg} />
 
             {/* Macro distribution card */}
             <div className="border border-border rounded-lg p-4 space-y-3 bg-surface">
