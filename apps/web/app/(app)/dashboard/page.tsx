@@ -6,6 +6,7 @@ import { Plus, X, Utensils, Calendar, Settings } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { PlateRingChart } from '@/components/PlateRingChart';
+import { BmiSpectrumChart } from '@/components/BmiSpectrumChart';
 
 export default function DashboardPage() {
   const profile = useNutritionStore((s) => s.profile);
@@ -166,25 +167,29 @@ export default function DashboardPage() {
             <PlateRingChart consumed={consumedTotals} targets={nutrition} />
           )}
 
-          {/* Quick Profile Summary */}
+          {/* Quick Profile Summary & BMI Spectrum Chart */}
           {profile && nutrition && (
-            <div className="bg-surface border border-border rounded-lg p-4 text-xs space-y-2">
-              <div className="font-semibold text-dark uppercase tracking-wider text-[11px] text-muted">
-                Formula Breakdown
+            <>
+              <BmiSpectrumChart heightCm={profile.height_cm} weightKg={profile.weight_kg} />
+
+              <div className="bg-surface border border-border rounded-lg p-4 text-xs space-y-2">
+                <div className="font-semibold text-dark uppercase tracking-wider text-[11px] text-muted">
+                  Formula Breakdown
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/50">
+                  <span className="text-muted">BMR (Mifflin-St Jeor)</span>
+                  <span className="font-mono font-medium text-dark">{Math.round(nutrition.bmr)} kcal</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-border/50">
+                  <span className="text-muted">TDEE ({profile.activity_level.replace('_', ' ')})</span>
+                  <span className="font-mono font-medium text-dark">{Math.round(nutrition.tdee)} kcal</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-muted">Daily Target ({profile.goal.replace('_', ' ')})</span>
+                  <span className="font-mono font-bold text-primary">{Math.round(nutrition.calorieTarget)} kcal</span>
+                </div>
               </div>
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted">BMR (Mifflin-St Jeor)</span>
-                <span className="font-mono font-medium text-dark">{Math.round(nutrition.bmr)} kcal</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-muted">TDEE ({profile.activity_level.replace('_', ' ')})</span>
-                <span className="font-mono font-medium text-dark">{Math.round(nutrition.tdee)} kcal</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-muted">Daily Target ({profile.goal.replace('_', ' ')})</span>
-                <span className="font-mono font-bold text-primary">{Math.round(nutrition.calorieTarget)} kcal</span>
-              </div>
-            </div>
+            </>
           )}
         </div>
       </div>
