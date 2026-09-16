@@ -1,0 +1,782 @@
+From 44361c42ea7267fcc0999569b314d6b957cded76 Mon Sep 17 00:00:00 2001
+From: Patch Baseline <patch@local>
+Date: Tue, 15 Sep 2026 21:20:39 +0000
+Subject: [PATCH] feat(homepage): build real bilingual marketing homepage, move
+ app pages behind a route group
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Previously '/' just did a hard redirect to /dashboard — there was no
+public-facing page at all, and the app's logged-in Navbar (including a
+publicly-reachable Admin link) rendered on every page since it lived in
+the root layout.
+
+Homepage:
+- Real marketing page: hero, feature rows, 'designed for real routines'
+  section, an insight teaser, an FAQ accordion, and a footer
+- Bangla/English toggle, defaulting to Bangla, persisted via localStorage
+- Copy is written to be genuinely attention-grabbing (curiosity-driven
+  headlines, direct CTAs) without fabricating fake user counts, fake
+  testimonials, or countdown urgency
+- CTA honestly says 'Try It Now' and routes to /onboarding (free) rather
+  than 'Subscribe', since Bdapps billing isn't wired up yet — trivial to
+  relabel once it is
+- Self-hosted Bengali fonts (@fontsource/noto-sans-bengali,
+  @fontsource/noto-serif-bengali) instead of next/font/google, so the
+  build has no dependency on reaching Google's font CDN at build time —
+  more robust for a shared-hosting deployment target
+
+Routing:
+- dashboard/tracker/plan/progress/admin/onboarding moved into an
+  app/(app)/ route group with their own layout carrying the Navbar and
+  food search modal — URLs are unchanged, but the marketing homepage no
+  longer inherits the logged-in app chrome (including the previously
+  publicly-exposed Admin nav link)
+- Moved pages' imports switched from relative paths to the existing @/
+  alias, which is more robust than relative-path depth counting if the
+  folder structure changes again later
+
+Verified: full workspace build + real 'next build' production build +
+all 7 routes return 200 + all 80 existing tests still pass + rendered
+homepage HTML confirmed to contain zero external font domain references.
+---
+ apps/web/app/{ => (app)}/admin/page.tsx      |   2 +-
+ apps/web/app/{ => (app)}/dashboard/page.tsx  |   4 +-
+ apps/web/app/(app)/layout.tsx                |  12 +
+ apps/web/app/{ => (app)}/onboarding/page.tsx |   2 +-
+ apps/web/app/{ => (app)}/plan/page.tsx       |   2 +-
+ apps/web/app/{ => (app)}/progress/page.tsx   |   2 +-
+ apps/web/app/{ => (app)}/tracker/page.tsx    |   2 +-
+ apps/web/app/layout.tsx                      |  20 +-
+ apps/web/app/page.tsx                        | 298 ++++++++++++++++++-
+ apps/web/lib/i18n/homepage-copy.ts           | 167 +++++++++++
+ apps/web/package.json                        |   2 +
+ apps/web/tailwind.config.ts                  |  18 +-
+ pnpm-lock.yaml                               |  16 +
+ 13 files changed, 528 insertions(+), 19 deletions(-)
+ rename apps/web/app/{ => (app)}/admin/page.tsx (99%)
+ rename apps/web/app/{ => (app)}/dashboard/page.tsx (98%)
+ create mode 100644 apps/web/app/(app)/layout.tsx
+ rename apps/web/app/{ => (app)}/onboarding/page.tsx (66%)
+ rename apps/web/app/{ => (app)}/plan/page.tsx (99%)
+ rename apps/web/app/{ => (app)}/progress/page.tsx (99%)
+ rename apps/web/app/{ => (app)}/tracker/page.tsx (99%)
+ create mode 100644 apps/web/lib/i18n/homepage-copy.ts
+
+diff --git a/apps/web/app/admin/page.tsx b/apps/web/app/(app)/admin/page.tsx
+similarity index 99%
+rename from apps/web/app/admin/page.tsx
+rename to apps/web/app/(app)/admin/page.tsx
+index 176cc32..b29d214 100644
+--- a/apps/web/app/admin/page.tsx
++++ b/apps/web/app/(app)/admin/page.tsx
+@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
+ import { Plus, Search, Check, UtensilsCrossed, ShieldAlert } from 'lucide-react';
+ import type { FoodItem } from '@thali/types';
+ import { FOOD_DATASET } from '@thali/food-data';
+-import { db } from '../../lib/db/db';
++import { db } from '@/lib/db/db';
+ 
+ export default function AdminCatalogPage() {
+   const [foods, setFoods] = useState<FoodItem[]>(FOOD_DATASET);
+diff --git a/apps/web/app/dashboard/page.tsx b/apps/web/app/(app)/dashboard/page.tsx
+similarity index 98%
+rename from apps/web/app/dashboard/page.tsx
+rename to apps/web/app/(app)/dashboard/page.tsx
+index 475fa80..7d9e377 100644
+--- a/apps/web/app/dashboard/page.tsx
++++ b/apps/web/app/(app)/dashboard/page.tsx
+@@ -4,8 +4,8 @@ import React, { useEffect, useMemo } from 'react';
+ import Link from 'next/link';
+ import { Plus, X, Utensils, Calendar, Settings } from 'lucide-react';
+ import type { MealSlot } from '@thali/types';
+-import { useNutritionStore } from '../../lib/store/useNutritionStore';
+-import { PlateRingChart } from '../../components/PlateRingChart';
++import { useNutritionStore } from '@/lib/store/useNutritionStore';
++import { PlateRingChart } from '@/components/PlateRingChart';
+ 
+ export default function DashboardPage() {
+   const profile = useNutritionStore((s) => s.profile);
+diff --git a/apps/web/app/(app)/layout.tsx b/apps/web/app/(app)/layout.tsx
+new file mode 100644
+index 0000000..c0e834a
+--- /dev/null
++++ b/apps/web/app/(app)/layout.tsx
+@@ -0,0 +1,12 @@
++import { Navbar } from '@/components/Navbar';
++import { FoodSearchModal } from '@/features/food-search/FoodSearchModal';
++
++export default function AppLayout({ children }: { children: React.ReactNode }) {
++  return (
++    <>
++      <Navbar />
++      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">{children}</main>
++      <FoodSearchModal />
++    </>
++  );
++}
+diff --git a/apps/web/app/onboarding/page.tsx b/apps/web/app/(app)/onboarding/page.tsx
+similarity index 66%
+rename from apps/web/app/onboarding/page.tsx
+rename to apps/web/app/(app)/onboarding/page.tsx
+index 2c48c5e..84f1bb3 100644
+--- a/apps/web/app/onboarding/page.tsx
++++ b/apps/web/app/(app)/onboarding/page.tsx
+@@ -1,4 +1,4 @@
+-import { OnboardingFlow } from '../../features/onboarding/OnboardingFlow';
++import { OnboardingFlow } from '@/features/onboarding/OnboardingFlow';
+ 
+ export const metadata = {
+   title: 'Onboarding & Nutrition Profile',
+diff --git a/apps/web/app/plan/page.tsx b/apps/web/app/(app)/plan/page.tsx
+similarity index 99%
+rename from apps/web/app/plan/page.tsx
+rename to apps/web/app/(app)/plan/page.tsx
+index 301ef03..544068f 100644
+--- a/apps/web/app/plan/page.tsx
++++ b/apps/web/app/(app)/plan/page.tsx
+@@ -3,7 +3,7 @@
+ import React, { useEffect, useState } from 'react';
+ import { Plus, X, RefreshCw, Sparkles, CheckCircle2 } from 'lucide-react';
+ import type { MealSlot } from '@thali/types';
+-import { useNutritionStore } from '../../lib/store/useNutritionStore';
++import { useNutritionStore } from '@/lib/store/useNutritionStore';
+ 
+ export default function DietPlanPage() {
+   const profile = useNutritionStore((s) => s.profile);
+diff --git a/apps/web/app/progress/page.tsx b/apps/web/app/(app)/progress/page.tsx
+similarity index 99%
+rename from apps/web/app/progress/page.tsx
+rename to apps/web/app/(app)/progress/page.tsx
+index 3e3b021..ee2ff7f 100644
+--- a/apps/web/app/progress/page.tsx
++++ b/apps/web/app/(app)/progress/page.tsx
+@@ -3,7 +3,7 @@
+ import React, { useState, useEffect } from 'react';
+ import { Scale, CheckCircle2, Circle, TrendingDown, TrendingUp, Plus, Calendar } from 'lucide-react';
+ import type { ProgressSummary, WeightLog } from '@thali/types';
+-import { useNutritionStore } from '../../lib/store/useNutritionStore';
++import { useNutritionStore } from '@/lib/store/useNutritionStore';
+ 
+ export default function ProgressPage() {
+   const subscriberId = useNutritionStore((s) => s.subscriberId);
+diff --git a/apps/web/app/tracker/page.tsx b/apps/web/app/(app)/tracker/page.tsx
+similarity index 99%
+rename from apps/web/app/tracker/page.tsx
+rename to apps/web/app/(app)/tracker/page.tsx
+index 26b70ad..6ed20eb 100644
+--- a/apps/web/app/tracker/page.tsx
++++ b/apps/web/app/(app)/tracker/page.tsx
+@@ -3,7 +3,7 @@
+ import React, { useEffect, useMemo } from 'react';
+ import { Plus, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+ import type { MealSlot } from '@thali/types';
+-import { useNutritionStore } from '../../lib/store/useNutritionStore';
++import { useNutritionStore } from '@/lib/store/useNutritionStore';
+ 
+ export default function TrackerPage() {
+   const selectedDate = useNutritionStore((s) => s.selectedDate);
+diff --git a/apps/web/app/layout.tsx b/apps/web/app/layout.tsx
+index 9f897e8..1c5ba2e 100644
+--- a/apps/web/app/layout.tsx
++++ b/apps/web/app/layout.tsx
+@@ -1,7 +1,15 @@
+ import './globals.css';
+ import type { Metadata } from 'next';
+-import { Navbar } from '../components/Navbar';
+-import { FoodSearchModal } from '../features/food-search/FoodSearchModal';
++// Self-hosted Bengali fonts (bundled at build time, no live fetch to
++// Google's CDN required) — more robust than next/font/google for
++// deployment targets with uncertain outbound network access at build time.
++import '@fontsource/noto-sans-bengali/400.css';
++import '@fontsource/noto-sans-bengali/500.css';
++import '@fontsource/noto-sans-bengali/600.css';
++import '@fontsource/noto-sans-bengali/700.css';
++import '@fontsource/noto-serif-bengali/500.css';
++import '@fontsource/noto-serif-bengali/600.css';
++import '@fontsource/noto-serif-bengali/700.css';
+ 
+ export const metadata: Metadata = {
+   title: {
+@@ -18,13 +26,9 @@ export default function RootLayout({
+   children: React.ReactNode;
+ }) {
+   return (
+-    <html lang="en">
++    <html lang="bn">
+       <body className="bg-background text-dark min-h-screen flex flex-col font-sans">
+-        <Navbar />
+-        <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">
+-          {children}
+-        </main>
+-        <FoodSearchModal />
++        {children}
+       </body>
+     </html>
+   );
+diff --git a/apps/web/app/page.tsx b/apps/web/app/page.tsx
+index aa1bda2..f594793 100644
+--- a/apps/web/app/page.tsx
++++ b/apps/web/app/page.tsx
+@@ -1,5 +1,299 @@
+-import { redirect } from 'next/navigation';
++'use client';
++
++import { useEffect, useState } from 'react';
++import Link from 'next/link';
++import {
++  Utensils,
++  Wallet,
++  WifiOff,
++  Search,
++  SlidersHorizontal,
++  Target,
++  Sparkles,
++  ChevronDown,
++  Languages,
++} from 'lucide-react';
++import { homepageCopy, type Lang } from '@/lib/i18n/homepage-copy';
++
++const TOP_ICONS = [Utensils, Wallet, WifiOff];
++const BOTTOM_ICONS = [Search, SlidersHorizontal, Target];
++
++function HeroRing() {
++  // Decorative only — sample numbers, not tied to a real logged-in user.
++  const radius = 58;
++  const circumference = 2 * Math.PI * radius;
++  const segments = [
++    { pct: 50, color: '#C98A2C' }, // carbs
++    { pct: 25, color: '#1F4D3E' }, // protein
++    { pct: 15, color: '#8FBFA8' }, // veg
++    { pct: 10, color: '#4A3418' }, // fat
++  ];
++  let offsetAccum = 0;
++
++  return (
++    <div className="relative w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center flex-shrink-0">
++      <svg className="w-full h-full -rotate-90" viewBox="0 0 140 140">
++        <circle cx="70" cy="70" r={radius} stroke="#EFE9D9" strokeWidth="14" fill="transparent" />
++        {segments.map((seg, i) => {
++          const dash = (seg.pct / 100) * circumference;
++          const gap = circumference - dash;
++          const el = (
++            <circle
++              key={i}
++              cx="70"
++              cy="70"
++              r={radius}
++              stroke={seg.color}
++              strokeWidth="14"
++              strokeDasharray={`${dash} ${gap}`}
++              strokeDashoffset={-offsetAccum}
++              strokeLinecap="round"
++              fill="transparent"
++            />
++          );
++          offsetAccum += dash;
++          return el;
++        })}
++      </svg>
++      <div className="absolute flex flex-col items-center justify-center text-center px-4">
++        <span className="text-4xl font-serif font-bold text-primary">645</span>
++        <span className="text-xs text-muted mt-1">kcal</span>
++      </div>
++    </div>
++  );
++}
+ 
+ export default function HomePage() {
+-  redirect('/dashboard');
++  const [lang, setLang] = useState<Lang>('bn');
++
++  useEffect(() => {
++    const stored = window.localStorage.getItem('thali_lang');
++    if (stored === 'bn' || stored === 'en') setLang(stored);
++  }, []);
++
++  const toggleLang = () => {
++    const next: Lang = lang === 'bn' ? 'en' : 'bn';
++    setLang(next);
++    window.localStorage.setItem('thali_lang', next);
++  };
++
++  const t = homepageCopy[lang];
++  const [openFaq, setOpenFaq] = useState<number | null>(null);
++
++  return (
++    <div className="flex-1 flex flex-col" dir="ltr">
++      {/* Header */}
++      <header className="border-b border-border bg-surface sticky top-0 z-40">
++        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
++          <Link href="/" className="flex items-center space-x-2 font-serif font-bold text-lg text-primary">
++            <div className="w-8 h-8 rounded bg-primary text-surface flex items-center justify-center">
++              <Utensils className="w-4 h-4 text-accent" />
++            </div>
++            <span>Thali Tracker</span>
++          </Link>
++
++          <nav className="hidden md:flex items-center space-x-6 text-sm font-medium text-dark">
++            <a href="#top" className="hover:text-primary transition-colors">
++              {t.nav.overview}
++            </a>
++            <a href="#how-it-works" className="hover:text-primary transition-colors">
++              {t.nav.howItWorks}
++            </a>
++            <a href="#faq" className="hover:text-primary transition-colors">
++              {t.nav.faq}
++            </a>
++          </nav>
++
++          <div className="flex items-center gap-2 sm:gap-3">
++            <button
++              onClick={toggleLang}
++              className="flex items-center gap-1.5 text-sm font-medium text-dark border border-border rounded-full px-3 py-1.5 hover:bg-background transition-colors"
++              aria-label="Toggle language"
++            >
++              <Languages className="w-3.5 h-3.5" />
++              <span>{t.langToggleLabel}</span>
++            </button>
++            <Link
++              href="/onboarding"
++              className="hidden sm:inline-block bg-accent hover:bg-accent-hover text-surface text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
++            >
++              {t.hero.ctaPrimary}
++            </Link>
++          </div>
++        </div>
++      </header>
++
++      <main id="top" className="flex-1">
++        {/* Hero */}
++        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20 grid md:grid-cols-2 gap-10 items-center">
++          <div>
++            <span className="inline-block text-xs font-semibold tracking-wide text-accent bg-accent-light px-3 py-1 rounded-full mb-4">
++              {t.hero.eyebrow}
++            </span>
++            <h1 className="text-3xl sm:text-5xl font-serif font-bold text-dark leading-tight mb-5">
++              {t.hero.headline}
++            </h1>
++            <p className="text-base sm:text-lg text-muted mb-8 max-w-lg">{t.hero.subhead}</p>
++            <div className="flex flex-col sm:flex-row gap-3">
++              <Link
++                href="/onboarding"
++                className="bg-accent hover:bg-accent-hover text-surface font-semibold px-6 py-3 rounded-lg text-center transition-colors"
++              >
++                {t.hero.ctaPrimary}
++              </Link>
++              <a
++                href="#how-it-works"
++                className="border border-border hover:bg-surface text-dark font-medium px-6 py-3 rounded-lg text-center transition-colors"
++              >
++                {t.hero.ctaSecondary}
++              </a>
++            </div>
++          </div>
++
++          <div className="flex justify-center md:justify-end">
++            <div className="bg-surface border border-border rounded-2xl p-6 sm:p-8 flex flex-col items-center gap-2">
++              <HeroRing />
++              <div className="text-center">
++                <div className="text-sm font-semibold text-dark">{t.hero.ringCaption}</div>
++                <div className="text-xs text-muted">{t.hero.ringSubcaption}</div>
++              </div>
++            </div>
++          </div>
++        </section>
++
++        {/* Top feature row */}
++        <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-14 grid sm:grid-cols-3 gap-5">
++          {t.featuresTop.map((f, i) => {
++            const Icon = TOP_ICONS[i];
++            return (
++              <div key={i} className="bg-surface border border-border rounded-xl p-5">
++                <div className="w-9 h-9 rounded-lg bg-primary-light flex items-center justify-center mb-3">
++                  <Icon className="w-4.5 h-4.5 text-primary" />
++                </div>
++                <h3 className="font-serif font-bold text-dark mb-1.5">{f.title}</h3>
++                <p className="text-sm text-muted leading-relaxed">{f.body}</p>
++              </div>
++            );
++          })}
++        </section>
++
++        {/* Designed for section */}
++        <section id="how-it-works" className="bg-primary-light/40 border-y border-border">
++          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-16">
++            <div className="max-w-2xl mb-10">
++              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-dark mb-3">
++                {t.designedFor.heading}
++              </h2>
++              <p className="text-muted">{t.designedFor.subheading}</p>
++            </div>
++            <div className="grid sm:grid-cols-3 gap-5">
++              {t.featuresBottom.map((f, i) => {
++                const Icon = BOTTOM_ICONS[i];
++                return (
++                  <div key={i} className="bg-surface border border-border rounded-xl p-5">
++                    <div className="w-9 h-9 rounded-lg bg-secondary-light flex items-center justify-center mb-3">
++                      <Icon className="w-4.5 h-4.5 text-secondary" />
++                    </div>
++                    <h3 className="font-serif font-bold text-dark mb-1.5">{f.title}</h3>
++                    <p className="text-sm text-muted leading-relaxed">{f.body}</p>
++                  </div>
++                );
++              })}
++            </div>
++          </div>
++        </section>
++
++        {/* Insight strip */}
++        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
++          <div className="bg-secondary-light border border-secondary/20 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
++            <div className="flex gap-4">
++              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
++                <Sparkles className="w-5 h-5 text-surface" />
++              </div>
++              <div>
++                <span className="text-xs font-semibold text-secondary uppercase tracking-wide">
++                  {t.insight.tag}
++                </span>
++                <h3 className="font-serif font-bold text-dark text-lg mt-1 mb-1.5">
++                  {t.insight.heading}
++                </h3>
++                <p className="text-sm text-muted max-w-xl leading-relaxed">{t.insight.body}</p>
++              </div>
++            </div>
++            <Link
++              href="/onboarding"
++              className="bg-primary hover:bg-primary-hover text-surface font-semibold px-5 py-2.5 rounded-lg whitespace-nowrap transition-colors"
++            >
++              {t.insight.cta}
++            </Link>
++          </div>
++        </section>
++
++        {/* FAQ */}
++        <section id="faq" className="max-w-3xl mx-auto px-4 sm:px-6 py-14">
++          <h2 className="text-2xl sm:text-3xl font-serif font-bold text-dark mb-8 text-center">
++            {t.faq.heading}
++          </h2>
++          <div className="space-y-3">
++            {t.faq.items.map((item, i) => {
++              const isOpen = openFaq === i;
++              return (
++                <div key={i} className="border border-border rounded-lg bg-surface overflow-hidden">
++                  <button
++                    onClick={() => setOpenFaq(isOpen ? null : i)}
++                    className="w-full flex items-center justify-between px-5 py-4 text-left font-medium text-dark"
++                  >
++                    <span>{item.q}</span>
++                    <ChevronDown
++                      className={`w-4 h-4 text-muted flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
++                    />
++                  </button>
++                  {isOpen && (
++                    <div className="px-5 pb-4 text-sm text-muted leading-relaxed">{item.a}</div>
++                  )}
++                </div>
++              );
++            })}
++          </div>
++        </section>
++      </main>
++
++      {/* Footer */}
++      <footer className="bg-primary text-surface">
++        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-3 gap-8">
++          <div>
++            <div className="flex items-center space-x-2 font-serif font-bold text-lg mb-3">
++              <div className="w-8 h-8 rounded bg-surface text-primary flex items-center justify-center">
++                <Utensils className="w-4 h-4 text-accent" />
++              </div>
++              <span>Thali Tracker</span>
++            </div>
++            <p className="text-sm text-surface/70 max-w-xs leading-relaxed">{t.footer.tagline}</p>
++          </div>
++          <div>
++            <div className="text-sm font-semibold mb-3 text-surface/90">{t.footer.quickLinks}</div>
++            <ul className="space-y-2 text-sm text-surface/70">
++              <li>
++                <a href="#how-it-works" className="hover:text-surface transition-colors">
++                  {t.footer.howItWorks}
++                </a>
++              </li>
++              <li>
++                <a href="#faq" className="hover:text-surface transition-colors">
++                  {t.footer.faq}
++                </a>
++              </li>
++            </ul>
++          </div>
++          <div>
++            <div className="text-sm font-semibold mb-3 text-surface/90">{t.footer.support}</div>
++            <p className="text-sm text-surface/70">support@thalitracker.bd</p>
++          </div>
++        </div>
++        <div className="border-t border-surface/10 py-4 text-center text-xs text-surface/60">
++          © {new Date().getFullYear()} Thali Tracker. {t.footer.rights}
++        </div>
++      </footer>
++    </div>
++  );
+ }
+diff --git a/apps/web/lib/i18n/homepage-copy.ts b/apps/web/lib/i18n/homepage-copy.ts
+new file mode 100644
+index 0000000..59927e1
+--- /dev/null
++++ b/apps/web/lib/i18n/homepage-copy.ts
+@@ -0,0 +1,167 @@
++export type Lang = 'bn' | 'en';
++
++export const homepageCopy = {
++  bn: {
++    nav: {
++      overview: 'ওভারভিউ',
++      howItWorks: 'কিভাবে কাজ করে',
++      faq: 'প্রশ্নোত্তর',
++    },
++    hero: {
++      eyebrow: 'বাংলাদেশের জন্য বানানো',
++      headline: 'ভাত-ডাল খেয়েই ফিট থাকা যায় — বিশ্বাস হচ্ছে না?',
++      subhead:
++        'ভাত, ডাল, রুটি থেকে শুরু করে ওটস বা চিকেন ব্রেস্ট — যা খুশি লগ করুন। আপনার লক্ষ্য অনুযায়ী প্ল্যান বানাই আমরা, আপনাকে খাবার বদলাতে হবে না।',
++      ctaPrimary: 'এখনই ট্রাই করুন — ফ্রি',
++      ctaSecondary: 'কিভাবে কাজ করে দেখুন',
++      ringCaption: 'আজকের লক্ষ্য',
++      ringSubcaption: '৬৪৫ কিলোক্যালরি বাকি',
++    },
++    featuresTop: [
++      {
++        title: 'দেশি খাবার, নির্ভুল হিসাব',
++        body: 'খিচুড়ি, ইলিশ, শাক-ভর্তা — সবকিছুর সঠিক ক্যালোরি হিসাব রাখা আছে। আন্দাজে নয়, বাস্তব হিসাবে।',
++      },
++      {
++        title: 'বাজেট টাইট? সমস্যা নেই',
++        body: 'চিকেন ব্রেস্ট কিনতে না পারলে ডিম বা সয়াবিন দিয়ে বদলে নিন — এক ক্লিকে, প্রোটিন ঠিক রেখেই।',
++      },
++      {
++        title: 'নেট না থাকলেও চলবে',
++        body: 'মোবাইল ডাটা না থাকলেও খাবার লগ করতে থাকুন — নেট ফিরলে নিজে থেকেই সিঙ্ক হয়ে যাবে।',
++      },
++    ],
++    designedFor: {
++      heading: 'জিমের ট্রেইনার না, আপনার রান্নাঘরের জন্য বানানো',
++      subheading: 'অ্যাভোকাডো টোস্ট বা কেল স্মুদির দরকার নেই — আপনি যা কাঁচাবাজার থেকে কেনেন, সেটাই ট্র্যাক করি আমরা।',
++    },
++    featuresBottom: [
++      {
++        title: 'যেকোনো খাবার খুঁজুন',
++        body: 'দেশি হোক বা বিদেশি — এক সার্চেই সব খাবার পাবেন। কোনো আলাদা লিস্টে আটকে থাকতে হবে না।',
++      },
++      {
++        title: 'নিজের মতো প্ল্যান সাজান',
++        body: 'কোনো খাবার পছন্দ না হলে বদলে দিন — পুরো প্ল্যান নতুন করে বানাতে হবে না।',
++      },
++      {
++        title: 'লক্ষ্য অনুযায়ী হিসাব',
++        body: 'ওজন কমানো, বাড়ানো, বা মাসল বানানো — প্রতিটির জন্য আলাদা হিসাবে খাবারের পরিমাণ ঠিক হয়।',
++      },
++    ],
++    insight: {
++      tag: 'উদাহরণ',
++      heading: 'ডাল দিয়ে ভাতের গ্লুকোজ শোষণ কমানো যায়, জানতেন?',
++      body: 'মোটা দানার মসুর ডাল ১ কাপ বাড়িয়ে দিলে চিকন চালের ভাতের গ্লুকোজ শোষণ প্রায় ২৮% কমে যায় — সারাদিন এনার্জি স্থির থাকে।',
++      cta: 'আজই লগ করা শুরু করুন',
++    },
++    faq: {
++      heading: 'যা জানতে চান',
++      items: [
++        {
++          q: 'শুধু বাংলা খাবার আছে, নাকি অন্য খাবারও পাব?',
++          a: 'দুটোই। দেশি-বিদেশি সব ধরনের খাবার একই জায়গায় খুঁজে পাবেন — আলাদা করে বাছতে হবে না।',
++        },
++        {
++          q: 'ইন্টারনেট ছাড়া খাবার লগ করা যাবে?',
++          a: 'হ্যাঁ। অফলাইনে লগ করতে থাকুন, নেট ফিরলেই সব নিজে থেকে সিঙ্ক হয়ে যাবে।',
++        },
++        {
++          q: 'কোনো খাবার সামর্থ্যের বাইরে হলে কী করব?',
++          a: 'সেই খাবার সরিয়ে অন্য কিছু বসিয়ে দিন — যেকোনো খাবার দিয়ে বদলানো যায়, ক্যালোরি হিসাব ঠিক থাকবে।',
++        },
++      ],
++    },
++    footer: {
++      tagline: 'বাংলাদেশের ঘরোয়া খাবারের অভ্যাস বুঝে বানানো নিউট্রিশন ট্র্যাকার।',
++      quickLinks: 'কুইক লিংক',
++      howItWorks: 'কিভাবে কাজ করে',
++      faq: 'প্রশ্নোত্তর',
++      support: 'সাপোর্ট',
++      rights: 'সর্বস্বত্ব সংরক্ষিত।',
++    },
++    langToggleLabel: 'English',
++  },
++  en: {
++    nav: {
++      overview: 'Overview',
++      howItWorks: 'How It Works',
++      faq: 'FAQ',
++    },
++    hero: {
++      eyebrow: 'Built for Bangladesh',
++      headline: 'You can stay fit eating rice and dal — sounds too easy?',
++      subhead:
++        'Rice, dal, roti, or oats and chicken breast — log whatever you actually eat. We build the plan around your goal. You don\u2019t change your food to fit an app.',
++      ctaPrimary: 'Try It Now — Free',
++      ctaSecondary: 'See How It Works',
++      ringCaption: "Today's target",
++      ringSubcaption: '645 kcal remaining',
++    },
++    featuresTop: [
++      {
++        title: 'Local foods, real numbers',
++        body: 'Khichuri, ilish, shaak-bhorta — accurately calculated, not guessed.',
++      },
++      {
++        title: 'Tight budget? No problem',
++        body: "Can't afford chicken breast this week? Swap it for egg or soya chunks in one tap, protein stays on target.",
++      },
++      {
++        title: 'Works without internet',
++        body: 'Keep logging with no mobile data — it quietly syncs the moment you\u2019re back online.',
++      },
++    ],
++    designedFor: {
++      heading: 'Built for your kitchen, not a gym trainer\u2019s clipboard',
++      subheading:
++        'No avocado toast or kale smoothies required — we track what you actually buy at the bazaar.',
++    },
++    featuresBottom: [
++      {
++        title: 'Search any food',
++        body: 'Local or international — one search finds everything, no separate lists to dig through.',
++      },
++      {
++        title: 'Edit your plan freely',
++        body: "Don't like something? Swap it out — no need to regenerate the whole week.",
++      },
++      {
++        title: 'Real numbers per goal',
++        body: 'Losing weight, gaining, or building muscle — each one gets genuinely different portions, not the same plan with a label changed.',
++      },
++    ],
++    insight: {
++      tag: 'Did you know',
++      heading: 'Dal can slow down how fast rice hits your bloodstream',
++      body: 'Adding an extra cup of thicker masoor dal can cut fine rice\u2019s glucose absorption by about 28% — keeping your energy steadier through the day.',
++      cta: 'Start logging today',
++    },
++    faq: {
++      heading: 'Questions people actually ask',
++      items: [
++        {
++          q: 'Is it only Bengali food, or can I log other things too?',
++          a: 'Both. Local and international foods live in the same search — nothing separate to dig through.',
++        },
++        {
++          q: 'Can I log food without an internet connection?',
++          a: 'Yes. Keep logging offline — everything syncs automatically the moment you\u2019re back online.',
++        },
++        {
++          q: "What if I can't afford an ingredient in my plan?",
++          a: 'Remove it and add anything else from the database instead — the calorie math adjusts itself.',
++        },
++      ],
++    },
++    footer: {
++      tagline: 'A nutrition tracker built around how Bangladeshi households actually eat.',
++      quickLinks: 'Quick Links',
++      howItWorks: 'How It Works',
++      faq: 'FAQ',
++      support: 'Support',
++      rights: 'All rights reserved.',
++    },
++    langToggleLabel: 'বাংলা',
++  },
++} as const;
+diff --git a/apps/web/package.json b/apps/web/package.json
+index 795e63f..cccc51b 100644
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -11,6 +11,8 @@
+     "next:build": "next build"
+   },
+   "dependencies": {
++    "@fontsource/noto-sans-bengali": "^5.3.0",
++    "@fontsource/noto-serif-bengali": "^5.3.0",
+     "@thali/domain": "workspace:*",
+     "@thali/food-data": "workspace:*",
+     "@thali/nutrition-engine": "workspace:*",
+diff --git a/apps/web/tailwind.config.ts b/apps/web/tailwind.config.ts
+index 06e62e7..fbbf8e9 100644
+--- a/apps/web/tailwind.config.ts
++++ b/apps/web/tailwind.config.ts
+@@ -37,8 +37,22 @@ const config: Config = {
+         muted: '#635F54',
+       },
+       fontFamily: {
+-        serif: ['Georgia', 'Cambria', '"Times New Roman"', 'serif'],
+-        sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
++        serif: [
++          '"Noto Serif Bengali"',
++          'Georgia',
++          'Cambria',
++          '"Times New Roman"',
++          'serif',
++        ],
++        sans: [
++          '"Noto Sans Bengali"',
++          'system-ui',
++          '-apple-system',
++          'BlinkMacSystemFont',
++          '"Segoe UI"',
++          'Roboto',
++          'sans-serif',
++        ],
+       },
+     },
+   },
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index cc762fa..481402c 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -78,6 +78,12 @@ importers:
+ 
+   apps/web:
+     dependencies:
++      '@fontsource/noto-sans-bengali':
++        specifier: ^5.3.0
++        version: 5.3.0
++      '@fontsource/noto-serif-bengali':
++        specifier: ^5.3.0
++        version: 5.3.0
+       '@thali/domain':
+         specifier: workspace:*
+         version: link:../../packages/domain
+@@ -554,6 +560,12 @@ packages:
+   '@fastify/rate-limit@11.2.0':
+     resolution: {integrity: sha512-X7osJd4XSvMoejYrnJkSZYYjY1eNYoBqhjlzf1RakC2204qExFqZFTKj5+T7VuzA/iUI9Z3UoSqQRkB2HpG0oQ==}
+ 
++  '@fontsource/noto-sans-bengali@5.3.0':
++    resolution: {integrity: sha512-EFBMU0UvzyFSc1ERK369zfqEu6DMRuWmCQ2+2ahhQTQAIDPEyN1UYlQdQeFkheu2DWG2hfdwrhiLlGFl2sSr/A==}
++
++  '@fontsource/noto-serif-bengali@5.3.0':
++    resolution: {integrity: sha512-CTEX03yqXP5A1GZUHiNOgNoHBWcwfrc7JskLSseAcOVMxopD8Wgc32naa58YRhMhXeZZoyoCjhfODwOiIxAQyA==}
++
+   '@humanfs/core@0.19.2':
+     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
+     engines: {node: '>=18.18.0'}
+@@ -2306,6 +2318,10 @@ snapshots:
+       ip-address: 10.7.0
+       toad-cache: 3.7.4
+ 
++  '@fontsource/noto-sans-bengali@5.3.0': {}
++
++  '@fontsource/noto-serif-bengali@5.3.0': {}
++
+   '@humanfs/core@0.19.2':
+     dependencies:
+       '@humanfs/types': 0.15.0
+-- 
+2.43.0
+

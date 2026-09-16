@@ -12,21 +12,290 @@ import {
   Sparkles,
   ChevronDown,
   Languages,
+  Quote,
+  Droplets,
+  Beef,
+  Salad,
+  Dumbbell,
+  Wind,
+  Zap,
+  ChevronRight,
 } from 'lucide-react';
 import { homepageCopy, type Lang } from '@/lib/i18n/homepage-copy';
 
 const TOP_ICONS = [Utensils, Wallet, WifiOff];
 const BOTTOM_ICONS = [Search, SlidersHorizontal, Target];
 
+// ─── Daily Quotes ─────────────────────────────────────────────────────────────
+const DAILY_QUOTES = [
+  { quote: 'Every healthy meal is a vote for the body you want to live in.', author: 'Anonymous' },
+  { quote: 'Consistency beats perfection. Show up today.', author: 'Thali Tracker' },
+  { quote: 'You don\'t have to eat less — you just have to eat right.', author: 'Anonymous' },
+  { quote: 'Small daily improvements lead to staggering long-term results.', author: 'Robin Sharma' },
+  { quote: 'Take care of your body — it\'s the only place you have to live.', author: 'Jim Rohn' },
+  { quote: 'Nutrition is not a punishment. It\'s a gift you give yourself daily.', author: 'Thali Tracker' },
+  { quote: 'Your future self will thank you for every disciplined choice you make today.', author: 'Anonymous' },
+];
+
+function MotivationalBanner() {
+  const [quoteIdx, setQuoteIdx] = useState(0);
+
+  useEffect(() => {
+    const dayOfYear = Math.floor(
+      (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000,
+    );
+    setQuoteIdx(dayOfYear % DAILY_QUOTES.length);
+  }, []);
+
+  const q = DAILY_QUOTES[quoteIdx];
+
+  return (
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-10">
+      <div className="bg-gradient-to-br from-primary to-primary-hover rounded-2xl p-6 sm:p-8 relative overflow-hidden">
+        {/* decorative rings */}
+        <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full border border-surface/10 pointer-events-none" />
+        <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full border border-surface/10 pointer-events-none" />
+        <div className="flex gap-4 items-start">
+          <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+            <Quote className="w-5 h-5 text-accent" />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-accent uppercase tracking-widest mb-2">
+              Daily Mindset
+            </div>
+            <blockquote className="text-surface font-serif font-semibold text-lg sm:text-xl leading-snug mb-2">
+              &ldquo;{q.quote}&rdquo;
+            </blockquote>
+            <cite className="text-surface/60 text-sm not-italic">— {q.author}</cite>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Fitness Tips ─────────────────────────────────────────────────────────────
+const FITNESS_TIPS = [
+  {
+    icon: Beef,
+    color: '#1F4D3E',
+    bg: '#E2ECE7',
+    title: 'Protein Timing',
+    body: 'Spread protein intake across 3–4 meals. Aim for 25–40 g per meal for optimal muscle protein synthesis.',
+  },
+  {
+    icon: Salad,
+    color: '#5A3E85',
+    bg: '#EFEBF5',
+    title: 'Fiber Every Meal',
+    body: 'Target 25–35 g fiber/day from vegetables, lentils, and whole grains to support digestion and satiety.',
+  },
+  {
+    icon: Droplets,
+    color: '#C98A2C',
+    bg: '#F8F1E4',
+    title: 'Hydration First',
+    body: 'Drink 35 ml per kg of bodyweight daily. Start each meal with a full glass of water to manage appetite.',
+  },
+  {
+    icon: Zap,
+    color: '#B0472F',
+    bg: '#F8ECE9',
+    title: 'Pre-Workout Fuel',
+    body: 'Eat 30–60 g carbs and 15–20 g protein 60–90 min before training for sustained energy and recovery.',
+  },
+  {
+    icon: Target,
+    color: '#1F4D3E',
+    bg: '#E2ECE7',
+    title: 'Calorie Deficit Safely',
+    body: 'A 300–500 kcal/day deficit is sustainable. Larger cuts spike cortisol and muscle loss — stay patient.',
+  },
+  {
+    icon: Sparkles,
+    color: '#5A3E85',
+    bg: '#EFEBF5',
+    title: 'Micronutrient Variety',
+    body: 'Eat at least 5 different colored vegetables/fruits per day to cover vitamins, minerals, and antioxidants.',
+  },
+];
+
+function FitnessTips() {
+  return (
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-10 border-t border-border">
+      <div className="mb-8">
+        <span className="text-xs font-semibold uppercase tracking-widest text-accent">Science-backed</span>
+        <h2 className="text-2xl sm:text-3xl font-serif font-bold text-dark mt-2">
+          Nutrition Rules That Actually Work
+        </h2>
+        <p className="text-muted mt-2 max-w-xl">
+          Simple, evidence-based principles built into how Thali Tracker calculates your daily targets.
+        </p>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {FITNESS_TIPS.map((tip) => {
+          const Icon = tip.icon;
+          return (
+            <div
+              key={tip.title}
+              className="bg-surface border border-border rounded-xl p-5 hover:shadow-md transition-shadow"
+            >
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+                style={{ backgroundColor: tip.bg }}
+              >
+                <Icon className="w-4.5 h-4.5" style={{ color: tip.color }} />
+              </div>
+              <h3 className="font-serif font-bold text-dark mb-1.5">{tip.title}</h3>
+              <p className="text-sm text-muted leading-relaxed">{tip.body}</p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ─── Home Workouts ────────────────────────────────────────────────────────────
+const WORKOUTS = [
+  {
+    icon: Dumbbell,
+    tag: 'Full Body',
+    title: 'Full Body Circuit',
+    duration: '25 min',
+    level: 'Beginner–Intermediate',
+    description:
+      'A complete no-equipment circuit that hits every major muscle group. Perfect for days when you cannot get to a gym.',
+    exercises: [
+      { name: 'Jumping Jacks', sets: '3 × 30 reps', note: 'Warm-up' },
+      { name: 'Push-Ups', sets: '3 × 12–15 reps', note: 'Chest, triceps' },
+      { name: 'Bodyweight Squats', sets: '3 × 20 reps', note: 'Quads, glutes' },
+      { name: 'Mountain Climbers', sets: '3 × 30 s', note: 'Core + cardio' },
+      { name: 'Reverse Lunges', sets: '3 × 10 each leg', note: 'Hamstrings, balance' },
+      { name: 'Plank Hold', sets: '3 × 45 s', note: 'Core stability' },
+    ],
+  },
+  {
+    icon: Target,
+    tag: 'Core',
+    title: 'Core Strength',
+    duration: '15 min',
+    level: 'All Levels',
+    description:
+      'A focused core session to build functional abdominal and lower-back strength with zero equipment needed.',
+    exercises: [
+      { name: 'Dead Bug', sets: '3 × 10 each side', note: 'Deep core activation' },
+      { name: 'Plank', sets: '3 × 60 s', note: 'Anti-extension' },
+      { name: 'Side Plank', sets: '2 × 30 s each side', note: 'Lateral stability' },
+      { name: 'Bicycle Crunches', sets: '3 × 20 reps', note: 'Obliques' },
+      { name: 'Glute Bridge', sets: '3 × 15 reps', note: 'Posterior chain' },
+      { name: 'Superman Hold', sets: '3 × 10 reps 3 s hold', note: 'Lower back' },
+    ],
+  },
+  {
+    icon: Wind,
+    tag: 'Mobility',
+    title: 'Morning Mobility',
+    duration: '10 min',
+    level: 'All Levels',
+    description:
+      'A gentle daily mobility flow to reduce stiffness, improve posture, and set a focused tone for the day.',
+    exercises: [
+      { name: 'Cat-Cow Stretch', sets: '10 slow reps', note: 'Spine mobility' },
+      { name: 'Hip 90/90 Stretch', sets: '60 s each side', note: 'Hip flexors & rotators' },
+      { name: 'World\'s Greatest Stretch', sets: '5 each side', note: 'Full chain' },
+      { name: 'Thoracic Rotation', sets: '10 each side', note: 'Mid-back mobility' },
+      { name: 'Ankle Circles', sets: '10 each direction', note: 'Joint prep' },
+      { name: 'Child\'s Pose', sets: '60 s hold', note: 'Recovery & breath' },
+    ],
+  },
+];
+
+function HomeWorkouts() {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  return (
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-10 border-t border-border">
+      <div className="mb-8">
+        <span className="text-xs font-semibold uppercase tracking-widest text-secondary">No Equipment Needed</span>
+        <h2 className="text-2xl sm:text-3xl font-serif font-bold text-dark mt-2">
+          Home Workout Library
+        </h2>
+        <p className="text-muted mt-2 max-w-xl">
+          Structured sessions designed to pair with your nutrition plan. Tap any card to expand the full routine.
+        </p>
+      </div>
+      <div className="space-y-3">
+        {WORKOUTS.map((w, i) => {
+          const Icon = w.icon;
+          const isOpen = openIdx === i;
+          return (
+            <div
+              key={w.title}
+              className="bg-surface border border-border rounded-xl overflow-hidden hover:border-primary/30 transition-colors"
+            >
+              {/* Header row — always visible */}
+              <button
+                onClick={() => setOpenIdx(isOpen ? null : i)}
+                className="w-full flex items-center gap-4 px-5 py-4 text-left"
+              >
+                <div className="w-10 h-10 rounded-lg bg-secondary-light flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-5 h-5 text-secondary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-secondary bg-secondary-light px-2 py-0.5 rounded-full">
+                      {w.tag}
+                    </span>
+                    <span className="text-[10px] text-muted">{w.duration} · {w.level}</span>
+                  </div>
+                  <div className="font-serif font-bold text-dark text-base mt-0.5">{w.title}</div>
+                  <p className="text-xs text-muted mt-0.5 leading-relaxed line-clamp-1">{w.description}</p>
+                </div>
+                <ChevronRight
+                  className={`w-4 h-4 text-muted flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                />
+              </button>
+
+              {/* Expanded exercise table */}
+              {isOpen && (
+                <div className="border-t border-border px-5 pb-5 pt-4 bg-background/40">
+                  <p className="text-sm text-muted mb-4 leading-relaxed">{w.description}</p>
+                  <div className="divide-y divide-border/50 rounded-lg border border-border overflow-hidden">
+                    {w.exercises.map((ex) => (
+                      <div
+                        key={ex.name}
+                        className="flex items-center justify-between px-4 py-2.5 bg-surface text-xs"
+                      >
+                        <div>
+                          <span className="font-semibold text-dark">{ex.name}</span>
+                          <span className="text-muted ml-2">— {ex.note}</span>
+                        </div>
+                        <span className="font-mono text-primary font-bold whitespace-nowrap ml-3">
+                          {ex.sets}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ─── Decorative ring (hero) ────────────────────────────────────────────────────
 function HeroRing() {
-  // Decorative only — sample numbers, not tied to a real logged-in user.
   const radius = 58;
   const circumference = 2 * Math.PI * radius;
   const segments = [
-    { pct: 50, color: '#C98A2C' }, // carbs
-    { pct: 25, color: '#1F4D3E' }, // protein
-    { pct: 15, color: '#8FBFA8' }, // veg
-    { pct: 10, color: '#4A3418' }, // fat
+    { pct: 50, color: '#C98A2C' },
+    { pct: 25, color: '#1F4D3E' },
+    { pct: 15, color: '#8FBFA8' },
+    { pct: 10, color: '#4A3418' },
   ];
   let offsetAccum = 0;
 
@@ -63,6 +332,7 @@ function HeroRing() {
   );
 }
 
+// ─── Page ──────────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const [lang, setLang] = useState<Lang>('bn');
 
@@ -82,7 +352,7 @@ export default function HomePage() {
 
   return (
     <div className="flex-1 flex flex-col" dir="ltr">
-      {/* Header */}
+      {/* ── Standalone Landing Header (no app Navbar) ── */}
       <header className="border-b border-border bg-surface sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center space-x-2 font-serif font-bold text-lg text-primary">
@@ -93,15 +363,10 @@ export default function HomePage() {
           </Link>
 
           <nav className="hidden md:flex items-center space-x-6 text-sm font-medium text-dark">
-            <a href="#top" className="hover:text-primary transition-colors">
-              {t.nav.overview}
-            </a>
-            <a href="#how-it-works" className="hover:text-primary transition-colors">
-              {t.nav.howItWorks}
-            </a>
-            <a href="#faq" className="hover:text-primary transition-colors">
-              {t.nav.faq}
-            </a>
+            <a href="#top" className="hover:text-primary transition-colors">{t.nav.overview}</a>
+            <a href="#how-it-works" className="hover:text-primary transition-colors">{t.nav.howItWorks}</a>
+            <a href="#workouts" className="hover:text-primary transition-colors">Workouts</a>
+            <a href="#faq" className="hover:text-primary transition-colors">{t.nav.faq}</a>
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3">
@@ -124,7 +389,7 @@ export default function HomePage() {
       </header>
 
       <main id="top" className="flex-1">
-        {/* Hero */}
+        {/* ── Hero ── */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20 grid md:grid-cols-2 gap-10 items-center">
           <div>
             <span className="inline-block text-xs font-semibold tracking-wide text-accent bg-accent-light px-3 py-1 rounded-full mb-4">
@@ -161,7 +426,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Top feature row */}
+        {/* ── Motivational Banner ── */}
+        <MotivationalBanner />
+
+        {/* ── Top feature row ── */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-14 grid sm:grid-cols-3 gap-5">
           {t.featuresTop.map((f, i) => {
             const Icon = TOP_ICONS[i];
@@ -177,7 +445,7 @@ export default function HomePage() {
           })}
         </section>
 
-        {/* Designed for section */}
+        {/* ── Designed for section ── */}
         <section id="how-it-works" className="bg-primary-light/40 border-y border-border">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-16">
             <div className="max-w-2xl mb-10">
@@ -203,8 +471,16 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Insight strip */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
+        {/* ── Fitness Tips ── */}
+        <FitnessTips />
+
+        {/* ── Home Workouts ── */}
+        <div id="workouts">
+          <HomeWorkouts />
+        </div>
+
+        {/* ── Insight strip ── */}
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-10 border-t border-border">
           <div className="bg-secondary-light border border-secondary/20 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div className="flex gap-4">
               <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
@@ -229,7 +505,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* FAQ */}
+        {/* ── FAQ ── */}
         <section id="faq" className="max-w-3xl mx-auto px-4 sm:px-6 py-14">
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-dark mb-8 text-center">
             {t.faq.heading}
@@ -258,7 +534,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* Footer */}
+      {/* ── Footer ── */}
       <footer className="bg-primary text-surface">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid sm:grid-cols-3 gap-8">
           <div>
@@ -273,16 +549,9 @@ export default function HomePage() {
           <div>
             <div className="text-sm font-semibold mb-3 text-surface/90">{t.footer.quickLinks}</div>
             <ul className="space-y-2 text-sm text-surface/70">
-              <li>
-                <a href="#how-it-works" className="hover:text-surface transition-colors">
-                  {t.footer.howItWorks}
-                </a>
-              </li>
-              <li>
-                <a href="#faq" className="hover:text-surface transition-colors">
-                  {t.footer.faq}
-                </a>
-              </li>
+              <li><a href="#how-it-works" className="hover:text-surface transition-colors">{t.footer.howItWorks}</a></li>
+              <li><a href="#workouts" className="hover:text-surface transition-colors">Home Workouts</a></li>
+              <li><a href="#faq" className="hover:text-surface transition-colors">{t.footer.faq}</a></li>
             </ul>
           </div>
           <div>
