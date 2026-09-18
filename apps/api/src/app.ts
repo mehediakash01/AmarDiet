@@ -45,6 +45,18 @@ import {
 import { ProgressService } from './modules/progress/progress.service.js';
 import { progressRoutes } from './modules/progress/progress.routes.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
+import { GeminiVisionProvider } from './modules/ai/providers/gemini.provider.js';
+import { GroqVisionProvider } from './modules/ai/providers/groq.provider.js';
+import { OpenRouterVisionProvider } from './modules/ai/providers/openrouter.provider.js';
+import type { VisionProvider } from './modules/ai/providers/types.js';
+import { VisionGateway } from './modules/ai/gateway.js';
+import {
+  type IMealScanRepository,
+  DrizzleMealScanRepository,
+  InMemoryMealScanRepository,
+} from './modules/ai/meal-scan.repository.js';
+import { AiService } from './modules/ai/ai.service.js';
+import { aiRoutes } from './modules/ai/ai.routes.js';
 
 export interface AppOptions {
   subscriberRepo?: ISubscriberRepository;
@@ -53,7 +65,10 @@ export interface AppOptions {
   dietPlanRepo?: IDietPlanRepository;
   weightLogRepo?: IWeightLogRepository;
   foodRepo?: IFoodRepository;
+  mealScanRepo?: IMealScanRepository;
   foodService?: FoodService;
+  visionProviders?: VisionProvider[];
+  aiService?: AiService;
   databaseUrl?: string;
   logger?: boolean;
   enableRateLimit?: boolean;
@@ -91,6 +106,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   let dietPlanRepo = options.dietPlanRepo;
   let weightLogRepo = options.weightLogRepo;
   let foodRepo = options.foodRepo;
+  let mealScanRepo = options.mealScanRepo;
 
   const db = getDatabase(options.databaseUrl);
   const usingRealDatabase = db !== null;
@@ -115,7 +131,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     !foodLogRepo ||
     !dietPlanRepo ||
     !weightLogRepo ||
-    !foodRepo
+    !foodRepo ||
+    !mealScanRepo
   ) {
     if (db) {
       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
@@ -124,6 +141,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       dietPlanRepo = dietPlanRepo || new DrizzleDietPlanRepository(db);
       weightLogRepo = weightLogRepo || new DrizzleWeightLogRepository(db);
       foodRepo = foodRepo || new DrizzleFoodRepository(db);
+      mealScanRepo = mealScanRepo || new DrizzleMealScanRepository(db);
     } else {
       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
       profileRepo = profileRepo || new InMemoryProfileRepository();
@@ -131,6 +149,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       dietPlanRepo = dietPlanRepo || new InMemoryDietPlanRepository();
       weightLogRepo = weightLogRepo || new InMemoryWeightLogRepository();
       foodRepo = foodRepo || new InMemoryFoodRepository();
+      mealScanRepo = mealScanRepo || new InMemoryMealScanRepository();
     }
   }
 
@@ -151,6 +170,43 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const dietPlanService = new DietPlanService(dietPlanRepo, profileService, foodService);
   const progressService = new ProgressService(weightLogRepo, profileService, foodLogService);
 
+  // AI meal-scan providers — each one only gets registered if BOTH its API
+  // key and model name are actually configured. No default model name is
+  // ever hardcoded (see providers/*.ts for why): an unconfigured provider
+  // is silently skipped from the fallback chain rather than crashing the
+  // whole feature, which is exactly what lets more providers get added
+  // later just by setting env vars, nothing else.
+  const visionProviders: VisionProvider[] = options.visionProviders ?? [];
+  if (!options.visionProviders) {
+    if (process.env.GEMINI_API_KEY && process.env.GEMINI_VISION_MODEL) {
+      visionProviders.push(
+        new GeminiVisionProvider(process.env.GEMINI_API_KEY, process.env.GEMINI_VISION_MODEL),
+      );
+    }
+    if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL) {
+      visionProviders.push(
+        new GroqVisionProvider(process.env.GROQ_API_KEY, process.env.GROQ_VISION_MODEL),
+      );
+    }
+    if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_VISION_MODEL) {
+      visionProviders.push(
+        new OpenRouterVisionProvider(
+          process.env.OPENROUTER_API_KEY,
+          process.env.OPENROUTER_VISION_MODEL,
+        ),
+      );
+    }
+    if (visionProviders.length === 0) {
+      console.warn(
+        '\n⚠️  No AI vision providers configured — /api/ai/scan-meal will always report\n' +
+          '    "all_providers_failed". Set at least one of GEMINI_API_KEY+GEMINI_VISION_MODEL,\n' +
+          '    GROQ_API_KEY+GROQ_VISION_MODEL, or OPENROUTER_API_KEY+OPENROUTER_VISION_MODEL.\n',
+      );
+    }
+  }
+  const visionGateway = new VisionGateway(visionProviders);
+  const aiService = options.aiService || new AiService(visionGateway, mealScanRepo, foodService);
+
   await app.register(subscriberRoutes(subscriberService));
   await app.register(profileRoutes(profileService));
   await app.register(foodRoutes(foodService));
@@ -158,6 +214,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(dietPlanRoutes(dietPlanService));
   await app.register(progressRoutes(progressService));
   await app.register(adminRoutes(foodService));
+  await app.register(aiRoutes(aiService));
 
   return app;
 }

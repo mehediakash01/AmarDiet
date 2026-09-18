@@ -137,4 +137,26 @@ export const foods = pgTable('foods', {
 export type FoodRow = typeof foods.$inferSelect;
 export type NewFoodRow = typeof foods.$inferInsert;
 
+/**
+ * Observability log for the AI meal-scan feature. Deliberately does NOT
+ * store the photo itself — decided against keeping images at all (not
+ * even temporarily), so there's nothing sensitive sitting in this table
+ * beyond the identified food names.
+ */
+export const mealScanEvents = pgTable('meal_scan_events', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  subscriberId: varchar('subscriber_id', { length: 64 })
+    .notNull()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  providerUsed: varchar('provider_used', { length: 32 }), // null if every provider failed
+  status: varchar('status', { length: 32 }).notNull(), // success | not_food | low_confidence | all_providers_failed
+  confidence: doublePrecision('confidence'),
+  identifiedItems: jsonb('identified_items'), // ScannedFoodItem[] — names/quantities only, no image
+  latencyMs: integer('latency_ms'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type MealScanEventRow = typeof mealScanEvents.$inferSelect;
+export type NewMealScanEventRow = typeof mealScanEvents.$inferInsert;
+
 

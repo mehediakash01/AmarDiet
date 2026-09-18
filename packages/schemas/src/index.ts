@@ -249,4 +249,44 @@ export const AdminPatchFoodSchema = AdminCreateFoodSchema.partial().omit({ id: t
 export type AdminCreateFoodInput = z.infer<typeof AdminCreateFoodSchema>;
 export type AdminPatchFoodInput = z.infer<typeof AdminPatchFoodSchema>;
 
+// AI Meal Scan Schemas
+//
+// This is the contract every vision provider's raw output gets forced into
+// via Zod before anything else in the app is allowed to touch it. A
+// provider's response that doesn't validate against this is treated as a
+// FAILURE (the gateway moves to the next provider), never coerced into a
+// "best guess" shape.
+export const ScannedFoodItemSchema = z.object({
+  name: z.string().min(1),
+  estimatedQuantity: z.number().positive(),
+  estimatedUnit: z.string().min(1),
+  // The model's own confidence in this specific item, 0-1. Lets the
+  // frontend visually flag shaky guesses (e.g. "sauce, hard to tell") for
+  // the user to double check, rather than presenting every item as equally
+  // certain.
+  confidence: z.number().min(0).max(1),
+});
+
+export const MealScanResultSchema = z.object({
+  // The model must be explicitly allowed to say "this isn't food" or "I
+  // can't tell" rather than being forced to always invent a full
+  // breakdown. isFood: false with an empty items array is a valid, honest
+  // result — not a failure.
+  isFood: z.boolean(),
+  confidence: z.number().min(0).max(1),
+  items: z.array(ScannedFoodItemSchema).max(20),
+  notes: z.string().max(500).optional(),
+});
+
+export const ScanMealRequestSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  imageBase64: z.string().min(1, 'imageBase64 is required'),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+});
+
+export type ScannedFoodItem = z.infer<typeof ScannedFoodItemSchema>;
+export type MealScanResult = z.infer<typeof MealScanResultSchema>;
+export type ScanMealRequestInput = z.infer<typeof ScanMealRequestSchema>;
+
+
 
