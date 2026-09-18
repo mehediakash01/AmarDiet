@@ -63,6 +63,7 @@ export interface NutritionState {
   activePlan: DietPlan | null;
   isLoading: boolean;
   planError: string | null;
+  isScanModalOpen: boolean;
 
   // Actions
   initSubscriber: () => Promise<void>;
@@ -72,6 +73,8 @@ export interface NutritionState {
   openFoodSearch: (slot: MealSlot) => void;
   openPlanFoodSearch: (day: string, slot: MealSlot) => void;
   closeFoodSearch: () => void;
+  openMealScan: (slot: MealSlot) => void;
+  closeMealScan: () => void;
   loadProfile: () => Promise<void>;
   loadLogsForDate: (date?: string) => Promise<void>;
   logFood: (
@@ -146,6 +149,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   activePlan: null,
   isLoading: false,
   planError: null,
+  isScanModalOpen: false,
 
   initSubscriber: async () => {
     const id = await getOrCreateSubscriberId();
@@ -199,6 +203,14 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   closeFoodSearch: () => {
     set({ isSearchModalOpen: false });
+  },
+
+  openMealScan: (slot: MealSlot) => {
+    set({ activeMealSlot: slot, isScanModalOpen: true });
+  },
+
+  closeMealScan: () => {
+    set({ isScanModalOpen: false });
   },
 
   loadProfile: async () => {
