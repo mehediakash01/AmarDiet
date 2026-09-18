@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, Calendar, Camera } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 
@@ -11,6 +11,7 @@ export default function TrackerPage() {
   const dailyLogs = useNutritionStore((s) => s.dailyLogs);
   const nutrition = useNutritionStore((s) => s.nutrition);
   const openFoodSearch = useNutritionStore((s) => s.openFoodSearch);
+  const openMealScan = useNutritionStore((s) => s.openMealScan);
   const removeFoodLog = useNutritionStore((s) => s.removeFoodLog);
   const loadLogsForDate = useNutritionStore((s) => s.loadLogsForDate);
 
@@ -157,14 +158,24 @@ export default function TrackerPage() {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => openFoodSearch(slot.id)}
-                  className="px-3 py-1 bg-primary text-surface hover:bg-primary-hover rounded text-xs font-medium flex items-center space-x-1 transition shadow-xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add food</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openMealScan(slot.id)}
+                    className="px-3 py-1 bg-secondary text-surface hover:bg-secondary-hover rounded text-xs font-medium flex items-center space-x-1 transition shadow-xs"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Scan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openFoodSearch(slot.id)}
+                    className="px-3 py-1 bg-primary text-surface hover:bg-primary-hover rounded text-xs font-medium flex items-center space-x-1 transition shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add food</span>
+                  </button>
+                </div>
               </div>
 
               {/* Slot Items Table */}
