@@ -1,0 +1,1522 @@
+From 3c242b350edd1e91dd333b0d4da8a6c14de0b012 Mon Sep 17 00:00:00 2001
+From: Patch Author <patch@local>
+Date: Fri, 18 Sep 2026 04:14:54 +0000
+Subject: [PATCH] feat(ai): multi-provider vision gateway for AI meal-photo
+ scanning
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds a real, no-fake-fallback AI meal scan feature: photo in, identified
+food items out, matched against our own real food database — never
+AI-invented nutrition numbers.
+
+Architecture:
+- providers/types.ts — shared VisionProvider interface + the honest
+  'isFood: false is a valid answer' prompt contract every provider uses
+- providers/gemini.provider.ts, groq.provider.ts, openrouter.provider.ts
+  — one adapter per provider, each independently Zod-validating its own
+  output before it's trusted. Deliberately NO hardcoded default model
+  name anywhere — verified during this build that Gemini 1.5 Flash is
+  already deprecated and Groq's vision lineup 'changes frequently' per
+  their own docs, so model names are env-var-only and a provider simply
+  doesn't activate if unconfigured, rather than shipping with a stale
+  default.
+- gateway.ts — tries providers in order with a per-call timeout and a
+  circuit breaker (3 consecutive failures opens a 2-minute cooldown for
+  that provider, so a struggling provider doesn't eat a timeout on every
+  single request). Adding a 4th/5th free provider later is one new
+  adapter file + two env vars, nothing else changes.
+- ai.service.ts — enforces a server-side image size ceiling (never
+  trusts client-side compression alone), maps the gateway's outcome to
+  an honest status (success / not_food / low_confidence /
+  all_providers_failed), and best-effort matches each identified item
+  against the REAL food database via the existing FoodService search —
+  this is what lets nutrition numbers come from a trusted source instead
+  of the vision model ever being asked to estimate calories itself.
+- meal_scan_events table — observability only. No photo is ever stored,
+  anywhere, per product decision — just the outcome (provider used,
+  status, confidence, identified item names/quantities).
+
+What this deliberately does NOT do (by design, not oversight):
+- No fabricated/mock result when every provider fails — an honest
+  all_providers_failed status with a manual-logging message instead
+- No rate limiting yet — explicitly deferred until real usage justifies
+  it, but the gateway/service boundary is exactly where it plugs in
+  later without touching provider code
+- No photo storage of any kind, temporary or otherwise
+
+Verified: full workspace build + 96/96 tests passing (50 nutrition-engine
++ 46 API, including 7 new gateway unit tests covering fallback/circuit-
+breaker/timeout behavior with fake providers, and 9 new integration tests
+against the real route). Also verified live end-to-end against a real
+Postgres database with zero AI keys configured: server honestly warns on
+startup, the real endpoint returns a clean 200 with an honest
+all_providers_failed response (not a 500), and the event was confirmed
+sitting in Postgres via an independent psql query.
+---
+ apps/api/.env.example                         |  26 +++
+ apps/api/src/app.ts                           |  59 ++++-
+ apps/api/src/infrastructure/db/schema.ts      |  22 ++
+ apps/api/src/modules/ai/ai.routes.ts          |  35 +++
+ apps/api/src/modules/ai/ai.service.ts         | 151 ++++++++++++
+ apps/api/src/modules/ai/gateway.ts            | 118 ++++++++++
+ .../src/modules/ai/meal-scan.repository.ts    |  67 ++++++
+ .../modules/ai/providers/gemini.provider.ts   |  76 ++++++
+ .../src/modules/ai/providers/groq.provider.ts |  77 ++++++
+ .../ai/providers/openrouter.provider.ts       |  81 +++++++
+ .../api/src/modules/ai/providers/parseJson.ts |  39 ++++
+ apps/api/src/modules/ai/providers/types.ts    |  68 ++++++
+ apps/api/vitest.config.ts                     |   6 +-
+ database/migrations/0003_meal_scan_events.sql |  22 ++
+ packages/schemas/src/index.ts                 |  40 ++++
+ tests/integration/api-ai-meal-scan.test.ts    | 219 ++++++++++++++++++
+ tests/unit/ai-gateway/gateway.test.ts         | 156 +++++++++++++
+ 17 files changed, 1260 insertions(+), 2 deletions(-)
+ create mode 100644 apps/api/src/modules/ai/ai.routes.ts
+ create mode 100644 apps/api/src/modules/ai/ai.service.ts
+ create mode 100644 apps/api/src/modules/ai/gateway.ts
+ create mode 100644 apps/api/src/modules/ai/meal-scan.repository.ts
+ create mode 100644 apps/api/src/modules/ai/providers/gemini.provider.ts
+ create mode 100644 apps/api/src/modules/ai/providers/groq.provider.ts
+ create mode 100644 apps/api/src/modules/ai/providers/openrouter.provider.ts
+ create mode 100644 apps/api/src/modules/ai/providers/parseJson.ts
+ create mode 100644 apps/api/src/modules/ai/providers/types.ts
+ create mode 100644 database/migrations/0003_meal_scan_events.sql
+ create mode 100644 tests/integration/api-ai-meal-scan.test.ts
+ create mode 100644 tests/unit/ai-gateway/gateway.test.ts
+
+diff --git a/apps/api/.env.example b/apps/api/.env.example
+index 4b100a8..b6936e4 100644
+--- a/apps/api/.env.example
++++ b/apps/api/.env.example
+@@ -18,3 +18,29 @@ DATABASE_URL=postgresql://<user>:<password>@<project>-pooler.<region>.aws.neon.t
+ 
+ PORT=3001
+ HOST=0.0.0.0
++
++# AI meal-scan vision providers — each provider only activates if BOTH its
++# key AND model name are set. Leave a provider's two lines commented out
++# (or unset) to skip it entirely; the gateway just uses whichever
++# providers ARE configured, in this order. Add a 4th/5th free provider
++# later by writing one more adapter in apps/api/src/modules/ai/providers/
++# and adding its two env vars here — nothing else needs to change.
++#
++# IMPORTANT: model names below are deliberately left blank, not defaulted.
++# Vision model lineups on these platforms change every few months — check
++# each provider's current docs right before deploying:
++#   Gemini:     https://ai.google.dev/gemini-api/docs/models
++#   Groq:       https://console.groq.com/docs/vision (their own docs warn
++#               the multimodal lineup "changes frequently" — avoid Preview
++#               models in production)
++#   OpenRouter: https://openrouter.ai/models?modality=vision (filter to
++#               free models — they rotate often)
++
++GEMINI_API_KEY=
++GEMINI_VISION_MODEL=
++
++GROQ_API_KEY=
++GROQ_VISION_MODEL=
++
++OPENROUTER_API_KEY=
++OPENROUTER_VISION_MODEL=
+diff --git a/apps/api/src/app.ts b/apps/api/src/app.ts
+index 633a6fd..6bfa2e2 100644
+--- a/apps/api/src/app.ts
++++ b/apps/api/src/app.ts
+@@ -45,6 +45,18 @@ import {
+ import { ProgressService } from './modules/progress/progress.service.js';
+ import { progressRoutes } from './modules/progress/progress.routes.js';
+ import { adminRoutes } from './modules/admin/admin.routes.js';
++import { GeminiVisionProvider } from './modules/ai/providers/gemini.provider.js';
++import { GroqVisionProvider } from './modules/ai/providers/groq.provider.js';
++import { OpenRouterVisionProvider } from './modules/ai/providers/openrouter.provider.js';
++import type { VisionProvider } from './modules/ai/providers/types.js';
++import { VisionGateway } from './modules/ai/gateway.js';
++import {
++  type IMealScanRepository,
++  DrizzleMealScanRepository,
++  InMemoryMealScanRepository,
++} from './modules/ai/meal-scan.repository.js';
++import { AiService } from './modules/ai/ai.service.js';
++import { aiRoutes } from './modules/ai/ai.routes.js';
+ 
+ export interface AppOptions {
+   subscriberRepo?: ISubscriberRepository;
+@@ -53,7 +65,10 @@ export interface AppOptions {
+   dietPlanRepo?: IDietPlanRepository;
+   weightLogRepo?: IWeightLogRepository;
+   foodRepo?: IFoodRepository;
++  mealScanRepo?: IMealScanRepository;
+   foodService?: FoodService;
++  visionProviders?: VisionProvider[];
++  aiService?: AiService;
+   databaseUrl?: string;
+   logger?: boolean;
+   enableRateLimit?: boolean;
+@@ -91,6 +106,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
+   let dietPlanRepo = options.dietPlanRepo;
+   let weightLogRepo = options.weightLogRepo;
+   let foodRepo = options.foodRepo;
++  let mealScanRepo = options.mealScanRepo;
+ 
+   const db = getDatabase(options.databaseUrl);
+   const usingRealDatabase = db !== null;
+@@ -115,7 +131,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
+     !foodLogRepo ||
+     !dietPlanRepo ||
+     !weightLogRepo ||
+-    !foodRepo
++    !foodRepo ||
++    !mealScanRepo
+   ) {
+     if (db) {
+       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
+@@ -124,6 +141,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
+       dietPlanRepo = dietPlanRepo || new DrizzleDietPlanRepository(db);
+       weightLogRepo = weightLogRepo || new DrizzleWeightLogRepository(db);
+       foodRepo = foodRepo || new DrizzleFoodRepository(db);
++      mealScanRepo = mealScanRepo || new DrizzleMealScanRepository(db);
+     } else {
+       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
+       profileRepo = profileRepo || new InMemoryProfileRepository();
+@@ -131,6 +149,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
+       dietPlanRepo = dietPlanRepo || new InMemoryDietPlanRepository();
+       weightLogRepo = weightLogRepo || new InMemoryWeightLogRepository();
+       foodRepo = foodRepo || new InMemoryFoodRepository();
++      mealScanRepo = mealScanRepo || new InMemoryMealScanRepository();
+     }
+   }
+ 
+@@ -151,6 +170,43 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
+   const dietPlanService = new DietPlanService(dietPlanRepo, profileService, foodService);
+   const progressService = new ProgressService(weightLogRepo, profileService, foodLogService);
+ 
++  // AI meal-scan providers — each one only gets registered if BOTH its API
++  // key and model name are actually configured. No default model name is
++  // ever hardcoded (see providers/*.ts for why): an unconfigured provider
++  // is silently skipped from the fallback chain rather than crashing the
++  // whole feature, which is exactly what lets more providers get added
++  // later just by setting env vars, nothing else.
++  const visionProviders: VisionProvider[] = options.visionProviders ?? [];
++  if (!options.visionProviders) {
++    if (process.env.GEMINI_API_KEY && process.env.GEMINI_VISION_MODEL) {
++      visionProviders.push(
++        new GeminiVisionProvider(process.env.GEMINI_API_KEY, process.env.GEMINI_VISION_MODEL),
++      );
++    }
++    if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL) {
++      visionProviders.push(
++        new GroqVisionProvider(process.env.GROQ_API_KEY, process.env.GROQ_VISION_MODEL),
++      );
++    }
++    if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_VISION_MODEL) {
++      visionProviders.push(
++        new OpenRouterVisionProvider(
++          process.env.OPENROUTER_API_KEY,
++          process.env.OPENROUTER_VISION_MODEL,
++        ),
++      );
++    }
++    if (visionProviders.length === 0) {
++      console.warn(
++        '\n⚠️  No AI vision providers configured — /api/ai/scan-meal will always report\n' +
++          '    "all_providers_failed". Set at least one of GEMINI_API_KEY+GEMINI_VISION_MODEL,\n' +
++          '    GROQ_API_KEY+GROQ_VISION_MODEL, or OPENROUTER_API_KEY+OPENROUTER_VISION_MODEL.\n',
++      );
++    }
++  }
++  const visionGateway = new VisionGateway(visionProviders);
++  const aiService = options.aiService || new AiService(visionGateway, mealScanRepo, foodService);
++
+   await app.register(subscriberRoutes(subscriberService));
+   await app.register(profileRoutes(profileService));
+   await app.register(foodRoutes(foodService));
+@@ -158,6 +214,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
+   await app.register(dietPlanRoutes(dietPlanService));
+   await app.register(progressRoutes(progressService));
+   await app.register(adminRoutes(foodService));
++  await app.register(aiRoutes(aiService));
+ 
+   return app;
+ }
+diff --git a/apps/api/src/infrastructure/db/schema.ts b/apps/api/src/infrastructure/db/schema.ts
+index 61a1415..b2eb4b3 100644
+--- a/apps/api/src/infrastructure/db/schema.ts
++++ b/apps/api/src/infrastructure/db/schema.ts
+@@ -137,4 +137,26 @@ export const foods = pgTable('foods', {
+ export type FoodRow = typeof foods.$inferSelect;
+ export type NewFoodRow = typeof foods.$inferInsert;
+ 
++/**
++ * Observability log for the AI meal-scan feature. Deliberately does NOT
++ * store the photo itself — decided against keeping images at all (not
++ * even temporarily), so there's nothing sensitive sitting in this table
++ * beyond the identified food names.
++ */
++export const mealScanEvents = pgTable('meal_scan_events', {
++  id: varchar('id', { length: 64 }).primaryKey(),
++  subscriberId: varchar('subscriber_id', { length: 64 })
++    .notNull()
++    .references(() => subscribers.id, { onDelete: 'cascade' }),
++  providerUsed: varchar('provider_used', { length: 32 }), // null if every provider failed
++  status: varchar('status', { length: 32 }).notNull(), // success | not_food | low_confidence | all_providers_failed
++  confidence: doublePrecision('confidence'),
++  identifiedItems: jsonb('identified_items'), // ScannedFoodItem[] — names/quantities only, no image
++  latencyMs: integer('latency_ms'),
++  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
++});
++
++export type MealScanEventRow = typeof mealScanEvents.$inferSelect;
++export type NewMealScanEventRow = typeof mealScanEvents.$inferInsert;
++
+ 
+diff --git a/apps/api/src/modules/ai/ai.routes.ts b/apps/api/src/modules/ai/ai.routes.ts
+new file mode 100644
+index 0000000..1dc0421
+--- /dev/null
++++ b/apps/api/src/modules/ai/ai.routes.ts
+@@ -0,0 +1,35 @@
++import type { FastifyPluginAsync } from 'fastify';
++import { ScanMealRequestSchema } from '@thali/schemas';
++import type { AiService } from './ai.service.js';
++
++export const aiRoutes = (service: AiService): FastifyPluginAsync => {
++  return async (fastify) => {
++    fastify.post(
++      '/api/ai/scan-meal',
++      {
++        // Base64-encoded images inflate ~33% over raw bytes, plus JSON
++        // wrapping — this covers our expected payload with real headroom
++        // without raising the global default limit for every other route.
++        bodyLimit: 10 * 1024 * 1024, // 10MB
++      },
++      async (request, reply) => {
++        const parseResult = ScanMealRequestSchema.safeParse(request.body);
++        if (!parseResult.success) {
++          return reply.status(400).send({
++            error: 'Validation failed',
++            details: parseResult.error.issues,
++          });
++        }
++
++        const { subscriberId, imageBase64, mimeType } = parseResult.data;
++        const result = await service.scanMeal(subscriberId, imageBase64, mimeType);
++
++        if (!result.ok) {
++          return reply.status(result.status).send({ error: result.error });
++        }
++
++        return reply.send(result.data);
++      },
++    );
++  };
++};
+diff --git a/apps/api/src/modules/ai/ai.service.ts b/apps/api/src/modules/ai/ai.service.ts
+new file mode 100644
+index 0000000..2c20e36
+--- /dev/null
++++ b/apps/api/src/modules/ai/ai.service.ts
+@@ -0,0 +1,151 @@
++import type { FoodItem } from '@thali/types';
++import type { ScannedFoodItem } from '@thali/schemas';
++import type { VisionGateway } from './gateway.js';
++import type { IMealScanRepository, MealScanStatus } from './meal-scan.repository.js';
++import type { FoodService } from '../food/food.service.js';
++
++const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // 6MB decoded — well under Groq's 20MB cap,
++// generous relative to the ~150KB the client is expected to send after
++// compression, but still a real ceiling rather than trusting the client.
++
++const LOW_CONFIDENCE_THRESHOLD = 0.35;
++
++export interface ScannedItemWithMatches extends ScannedFoodItem {
++  /** Best-effort matches from our real, trusted food database — never
++   *  invented nutrition numbers, always sourced the same way as every
++   *  other food in this app. May be empty if nothing matched well; the
++   *  user can always fall back to manual search. */
++  matchedFoodCandidates: FoodItem[];
++}
++
++export interface ScanMealResult {
++  status: MealScanStatus;
++  providerUsed: string | null;
++  confidence: number | null;
++  items: ScannedItemWithMatches[];
++  notes?: string;
++  message: string;
++}
++
++export class AiService {
++  constructor(
++    private gateway: VisionGateway,
++    private mealScanRepo: IMealScanRepository,
++    private foodService: FoodService,
++  ) {}
++
++  /**
++   * Rough, non-decoding size check on the base64 string itself (decoded
++   * bytes are ~0.75x the base64 length) — cheap enough to run before doing
++   * anything else, and rejects an oversized upload before it ever reaches
++   * a provider (and their per-request cost/quota).
++   */
++  private isImageTooLarge(imageBase64: string): boolean {
++    const approxDecodedBytes = imageBase64.length * 0.75;
++    return approxDecodedBytes > MAX_IMAGE_BYTES;
++  }
++
++  async scanMeal(
++    subscriberId: string,
++    imageBase64: string,
++    mimeType: string,
++  ): Promise<{ ok: true; data: ScanMealResult } | { ok: false; status: number; error: string }> {
++    if (this.isImageTooLarge(imageBase64)) {
++      return {
++        ok: false,
++        status: 413,
++        error: 'Image is too large. Please retake or use a smaller photo.',
++      };
++    }
++
++    const startedAt = Date.now();
++    const outcome = await this.gateway.scan(imageBase64, mimeType);
++    const latencyMs = Date.now() - startedAt;
++
++    if (outcome.outcome === 'all_providers_failed') {
++      await this.mealScanRepo.record({
++        subscriberId,
++        providerUsed: null,
++        status: 'all_providers_failed',
++        confidence: null,
++        identifiedItems: null,
++        latencyMs,
++      });
++
++      return {
++        ok: true,
++        data: {
++          status: 'all_providers_failed',
++          providerUsed: null,
++          confidence: null,
++          items: [],
++          message:
++            "We couldn't analyze this photo right now. You can search and log this meal manually instead.",
++        },
++      };
++    }
++
++    const { result, providerUsed } = outcome;
++
++    if (!result.isFood || result.items.length === 0) {
++      await this.mealScanRepo.record({
++        subscriberId,
++        providerUsed,
++        status: 'not_food',
++        confidence: result.confidence,
++        identifiedItems: [],
++        latencyMs,
++      });
++
++      return {
++        ok: true,
++        data: {
++          status: 'not_food',
++          providerUsed,
++          confidence: result.confidence,
++          items: [],
++          notes: result.notes,
++          message:
++            "We couldn't identify food in this photo clearly enough. Try a clearer shot, or search and log manually.",
++        },
++      };
++    }
++
++    const status: MealScanStatus =
++      result.confidence < LOW_CONFIDENCE_THRESHOLD ? 'low_confidence' : 'success';
++
++    // Best-effort match each identified item against the real food
++    // database — this is what lets the review screen show real nutrition
++    // per item instead of nothing. Never blocks on a miss; an item with
++    // no good match just gets an empty candidate list, and the user
++    // searches for it manually like they would for anything else.
++    const itemsWithMatches: ScannedItemWithMatches[] = result.items.map((item) => ({
++      ...item,
++      matchedFoodCandidates: this.foodService.searchFoods({ q: item.name, limit: 3 }),
++    }));
++
++    await this.mealScanRepo.record({
++      subscriberId,
++      providerUsed,
++      status,
++      confidence: result.confidence,
++      identifiedItems: result.items,
++      latencyMs,
++    });
++
++    return {
++      ok: true,
++      data: {
++        status,
++        providerUsed,
++        confidence: result.confidence,
++        items: itemsWithMatches,
++        notes: result.notes,
++        message:
++          status === 'low_confidence'
++            ? "We identified this, but we're not fully confident — please double-check before logging."
++            : 'Review the identified items below, then log the ones you want.',
++      },
++    };
++  }
++}
+diff --git a/apps/api/src/modules/ai/gateway.ts b/apps/api/src/modules/ai/gateway.ts
+new file mode 100644
+index 0000000..36b4e11
+--- /dev/null
++++ b/apps/api/src/modules/ai/gateway.ts
+@@ -0,0 +1,118 @@
++import type { MealScanResult } from '@thali/schemas';
++import { VisionProviderError, type VisionProvider } from './providers/types.js';
++
++export interface GatewayScanSuccess {
++  outcome: 'success';
++  result: MealScanResult;
++  providerUsed: string;
++}
++
++export interface GatewayScanFailure {
++  outcome: 'all_providers_failed';
++  attemptedProviders: string[];
++}
++
++export type GatewayScanOutcome = GatewayScanSuccess | GatewayScanFailure;
++
++interface CircuitState {
++  consecutiveFailures: number;
++  openUntil: number; // epoch ms; 0 means not open
++}
++
++const FAILURE_THRESHOLD = 3;
++const COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
++const DEFAULT_PER_CALL_TIMEOUT_MS = 15_000;
++
++/**
++ * Tries each registered provider in order. A provider that has failed
++ * FAILURE_THRESHOLD times in a row gets skipped (its "circuit" is open)
++ * for COOLDOWN_MS, rather than being retried — and timed out — on every
++ * single request while it's clearly having a bad day. After the cooldown
++ * it gets one attempt to prove it's recovered.
++ *
++ * This never fabricates a result. If every provider fails or is
++ * cooling down, it returns an honest failure outcome — the caller decides
++ * what the user sees, but it is never a synthesized meal.
++ */
++export class VisionGateway {
++  private circuits = new Map<string, CircuitState>();
++  private perCallTimeoutMs: number;
++
++  constructor(
++    private providers: VisionProvider[],
++    options: { perCallTimeoutMs?: number } = {},
++  ) {
++    this.perCallTimeoutMs = options.perCallTimeoutMs ?? DEFAULT_PER_CALL_TIMEOUT_MS;
++  }
++
++  async scan(imageBase64: string, mimeType: string): Promise<GatewayScanOutcome> {
++    const attempted: string[] = [];
++
++    for (const provider of this.providers) {
++      if (this.isOpen(provider.name)) continue;
++
++      attempted.push(provider.name);
++      try {
++        const result = await this.withTimeout(
++          provider.analyzeMealPhoto(imageBase64, mimeType),
++          this.perCallTimeoutMs,
++          provider.name,
++        );
++        this.recordSuccess(provider.name);
++        return { outcome: 'success', result, providerUsed: provider.name };
++      } catch (e) {
++        this.recordFailure(provider.name);
++        console.error(
++          `[ai/gateway] ${provider.name} failed: ${e instanceof Error ? e.message : String(e)}`,
++        );
++        continue;
++      }
++    }
++
++    return { outcome: 'all_providers_failed', attemptedProviders: attempted };
++  }
++
++  private isOpen(providerName: string): boolean {
++    const state = this.circuits.get(providerName);
++    if (!state) return false;
++    if (state.openUntil === 0) return false;
++    if (Date.now() >= state.openUntil) {
++      // Cooldown elapsed — allow one attempt (half-open) by resetting.
++      this.circuits.set(providerName, { consecutiveFailures: 0, openUntil: 0 });
++      return false;
++    }
++    return true;
++  }
++
++  private recordSuccess(providerName: string): void {
++    this.circuits.set(providerName, { consecutiveFailures: 0, openUntil: 0 });
++  }
++
++  private recordFailure(providerName: string): void {
++    const state = this.circuits.get(providerName) ?? { consecutiveFailures: 0, openUntil: 0 };
++    const consecutiveFailures = state.consecutiveFailures + 1;
++    const openUntil =
++      consecutiveFailures >= FAILURE_THRESHOLD ? Date.now() + COOLDOWN_MS : 0;
++    this.circuits.set(providerName, { consecutiveFailures, openUntil });
++  }
++
++  private async withTimeout<T>(promise: Promise<T>, ms: number, providerName: string): Promise<T> {
++    let timer: ReturnType<typeof setTimeout>;
++    const timeout = new Promise<never>((_, reject) => {
++      timer = setTimeout(
++        () => reject(new VisionProviderError(providerName, `timed out after ${ms}ms`)),
++        ms,
++      );
++    });
++    try {
++      return await Promise.race([promise, timeout]);
++    } finally {
++      clearTimeout(timer!);
++    }
++  }
++
++  /** Exposed for tests and admin/debug visibility, not used in the hot path. */
++  getCircuitStates(): Record<string, CircuitState> {
++    return Object.fromEntries(this.circuits);
++  }
++}
+diff --git a/apps/api/src/modules/ai/meal-scan.repository.ts b/apps/api/src/modules/ai/meal-scan.repository.ts
+new file mode 100644
+index 0000000..1adc29d
+--- /dev/null
++++ b/apps/api/src/modules/ai/meal-scan.repository.ts
+@@ -0,0 +1,67 @@
++import { randomUUID } from 'crypto';
++import type { MealScanResult } from '@thali/schemas';
++import type { AppDatabase } from '../../infrastructure/db/index.js';
++import { mealScanEvents } from '../../infrastructure/db/schema.js';
++
++export type MealScanStatus = 'success' | 'not_food' | 'low_confidence' | 'all_providers_failed';
++
++export interface MealScanEvent {
++  id: string;
++  subscriberId: string;
++  providerUsed: string | null;
++  status: MealScanStatus;
++  confidence: number | null;
++  identifiedItems: MealScanResult['items'] | null;
++  latencyMs: number | null;
++  createdAt: string;
++}
++
++export interface IMealScanRepository {
++  record(event: Omit<MealScanEvent, 'id' | 'createdAt'>): Promise<MealScanEvent>;
++}
++
++export class DrizzleMealScanRepository implements IMealScanRepository {
++  constructor(private db: AppDatabase) {}
++
++  async record(event: Omit<MealScanEvent, 'id' | 'createdAt'>): Promise<MealScanEvent> {
++    const id = `scan_${Date.now()}_${randomUUID().substring(0, 8)}`;
++    const [row] = await this.db
++      .insert(mealScanEvents)
++      .values({
++        id,
++        subscriberId: event.subscriberId,
++        providerUsed: event.providerUsed,
++        status: event.status,
++        confidence: event.confidence,
++        identifiedItems: event.identifiedItems,
++        latencyMs: event.latencyMs,
++      })
++      .returning();
++
++    return {
++      id: row.id,
++      subscriberId: row.subscriberId,
++      providerUsed: row.providerUsed,
++      status: row.status as MealScanStatus,
++      confidence: row.confidence,
++      identifiedItems: row.identifiedItems as MealScanResult['items'] | null,
++      latencyMs: row.latencyMs,
++      createdAt: row.createdAt.toISOString(),
++    };
++  }
++}
++
++/** Dev-only fallback, mirrors the pattern used for every other module. */
++export class InMemoryMealScanRepository implements IMealScanRepository {
++  private events: MealScanEvent[] = [];
++
++  async record(event: Omit<MealScanEvent, 'id' | 'createdAt'>): Promise<MealScanEvent> {
++    const record: MealScanEvent = {
++      ...event,
++      id: `scan_${Date.now()}_${randomUUID().substring(0, 8)}`,
++      createdAt: new Date().toISOString(),
++    };
++    this.events.push(record);
++    return record;
++  }
++}
+diff --git a/apps/api/src/modules/ai/providers/gemini.provider.ts b/apps/api/src/modules/ai/providers/gemini.provider.ts
+new file mode 100644
+index 0000000..ab58a3a
+--- /dev/null
++++ b/apps/api/src/modules/ai/providers/gemini.provider.ts
+@@ -0,0 +1,76 @@
++import { MealScanResultSchema, type MealScanResult } from '@thali/schemas';
++import { MEAL_SCAN_INSTRUCTION, VisionProviderError, type VisionProvider } from './types.js';
++import { extractJsonObject } from './parseJson.js';
++
++/**
++ * IMPORTANT: the model name comes entirely from GEMINI_VISION_MODEL — no
++ * default is hardcoded here. Google's Gemini model lineup turns over every
++ * few months (1.5 Flash is already gone as of writing this). Check
++ * https://ai.google.dev/gemini-api/docs/models for the current
++ * vision-capable model name before setting this.
++ */
++export class GeminiVisionProvider implements VisionProvider {
++  readonly name = 'gemini';
++
++  constructor(
++    private apiKey: string,
++    private model: string,
++  ) {}
++
++  async analyzeMealPhoto(imageBase64: string, mimeType: string): Promise<MealScanResult> {
++    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
++
++    let res: Response;
++    try {
++      res = await fetch(url, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({
++          contents: [
++            {
++              parts: [
++                { text: MEAL_SCAN_INSTRUCTION },
++                { inline_data: { mime_type: mimeType, data: imageBase64 } },
++              ],
++            },
++          ],
++          generationConfig: {
++            responseMimeType: 'application/json',
++          },
++        }),
++      });
++    } catch (e) {
++      throw new VisionProviderError(this.name, 'network request failed', e);
++    }
++
++    if (!res.ok) {
++      const body = await res.text().catch(() => '');
++      throw new VisionProviderError(this.name, `HTTP ${res.status}: ${body.slice(0, 300)}`);
++    }
++
++    const data = (await res.json()) as {
++      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
++    };
++    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
++    if (!rawText) {
++      throw new VisionProviderError(this.name, 'response contained no text content');
++    }
++
++    let parsedJson: unknown;
++    try {
++      parsedJson = extractJsonObject(rawText);
++    } catch (e) {
++      throw new VisionProviderError(this.name, 'could not extract JSON from response', e);
++    }
++
++    const validated = MealScanResultSchema.safeParse(parsedJson);
++    if (!validated.success) {
++      throw new VisionProviderError(
++        this.name,
++        `response failed schema validation: ${validated.error.message}`,
++      );
++    }
++
++    return validated.data;
++  }
++}
+diff --git a/apps/api/src/modules/ai/providers/groq.provider.ts b/apps/api/src/modules/ai/providers/groq.provider.ts
+new file mode 100644
+index 0000000..ff176c0
+--- /dev/null
++++ b/apps/api/src/modules/ai/providers/groq.provider.ts
+@@ -0,0 +1,77 @@
++import { MealScanResultSchema, type MealScanResult } from '@thali/schemas';
++import { MEAL_SCAN_INSTRUCTION, VisionProviderError, type VisionProvider } from './types.js';
++import { extractJsonObject } from './parseJson.js';
++
++/**
++ * IMPORTANT: the model name comes entirely from GROQ_VISION_MODEL — no
++ * default is hardcoded here. Groq's own docs state their multimodal
++ * lineup "changes frequently" (Llama 3.2 Vision is already gone as of
++ * writing this). Check https://console.groq.com/docs/vision for the
++ * current production-ready (not Preview) vision model before setting this.
++ */
++export class GroqVisionProvider implements VisionProvider {
++  readonly name = 'groq';
++
++  constructor(
++    private apiKey: string,
++    private model: string,
++  ) {}
++
++  async analyzeMealPhoto(imageBase64: string, mimeType: string): Promise<MealScanResult> {
++    let res: Response;
++    try {
++      res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
++        method: 'POST',
++        headers: {
++          'Content-Type': 'application/json',
++          Authorization: `Bearer ${this.apiKey}`,
++        },
++        body: JSON.stringify({
++          model: this.model,
++          messages: [
++            {
++              role: 'user',
++              content: [
++                { type: 'text', text: MEAL_SCAN_INSTRUCTION },
++                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
++              ],
++            },
++          ],
++          response_format: { type: 'json_object' },
++        }),
++      });
++    } catch (e) {
++      throw new VisionProviderError(this.name, 'network request failed', e);
++    }
++
++    if (!res.ok) {
++      const body = await res.text().catch(() => '');
++      throw new VisionProviderError(this.name, `HTTP ${res.status}: ${body.slice(0, 300)}`);
++    }
++
++    const data = (await res.json()) as {
++      choices?: Array<{ message?: { content?: string } }>;
++    };
++    const rawText = data.choices?.[0]?.message?.content;
++    if (!rawText) {
++      throw new VisionProviderError(this.name, 'response contained no message content');
++    }
++
++    let parsedJson: unknown;
++    try {
++      parsedJson = extractJsonObject(rawText);
++    } catch (e) {
++      throw new VisionProviderError(this.name, 'could not extract JSON from response', e);
++    }
++
++    const validated = MealScanResultSchema.safeParse(parsedJson);
++    if (!validated.success) {
++      throw new VisionProviderError(
++        this.name,
++        `response failed schema validation: ${validated.error.message}`,
++      );
++    }
++
++    return validated.data;
++  }
++}
+diff --git a/apps/api/src/modules/ai/providers/openrouter.provider.ts b/apps/api/src/modules/ai/providers/openrouter.provider.ts
+new file mode 100644
+index 0000000..a86c2c7
+--- /dev/null
++++ b/apps/api/src/modules/ai/providers/openrouter.provider.ts
+@@ -0,0 +1,81 @@
++import { MealScanResultSchema, type MealScanResult } from '@thali/schemas';
++import { MEAL_SCAN_INSTRUCTION, VisionProviderError, type VisionProvider } from './types.js';
++import { extractJsonObject } from './parseJson.js';
++
++/**
++ * IMPORTANT: the model slug comes entirely from OPENROUTER_VISION_MODEL —
++ * no default is hardcoded here. Free vision models on OpenRouter rotate
++ * and disappear often; check https://openrouter.ai/models?modality=vision
++ * and filter to free/vision before setting this.
++ *
++ * OpenRouter proxies many different underlying models, not all of which
++ * reliably honor response_format: json_object — that's why this is the
++ * one provider that doesn't even attempt to request it, and leans
++ * entirely on extractJsonObject()'s defensive fence-stripping plus Zod
++ * validation to catch whatever comes back.
++ */
++export class OpenRouterVisionProvider implements VisionProvider {
++  readonly name = 'openrouter';
++
++  constructor(
++    private apiKey: string,
++    private model: string,
++  ) {}
++
++  async analyzeMealPhoto(imageBase64: string, mimeType: string): Promise<MealScanResult> {
++    let res: Response;
++    try {
++      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
++        method: 'POST',
++        headers: {
++          'Content-Type': 'application/json',
++          Authorization: `Bearer ${this.apiKey}`,
++        },
++        body: JSON.stringify({
++          model: this.model,
++          messages: [
++            {
++              role: 'user',
++              content: [
++                { type: 'text', text: MEAL_SCAN_INSTRUCTION },
++                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
++              ],
++            },
++          ],
++        }),
++      });
++    } catch (e) {
++      throw new VisionProviderError(this.name, 'network request failed', e);
++    }
++
++    if (!res.ok) {
++      const body = await res.text().catch(() => '');
++      throw new VisionProviderError(this.name, `HTTP ${res.status}: ${body.slice(0, 300)}`);
++    }
++
++    const data = (await res.json()) as {
++      choices?: Array<{ message?: { content?: string } }>;
++    };
++    const rawText = data.choices?.[0]?.message?.content;
++    if (!rawText) {
++      throw new VisionProviderError(this.name, 'response contained no message content');
++    }
++
++    let parsedJson: unknown;
++    try {
++      parsedJson = extractJsonObject(rawText);
++    } catch (e) {
++      throw new VisionProviderError(this.name, 'could not extract JSON from response', e);
++    }
++
++    const validated = MealScanResultSchema.safeParse(parsedJson);
++    if (!validated.success) {
++      throw new VisionProviderError(
++        this.name,
++        `response failed schema validation: ${validated.error.message}`,
++      );
++    }
++
++    return validated.data;
++  }
++}
+diff --git a/apps/api/src/modules/ai/providers/parseJson.ts b/apps/api/src/modules/ai/providers/parseJson.ts
+new file mode 100644
+index 0000000..9752075
+--- /dev/null
++++ b/apps/api/src/modules/ai/providers/parseJson.ts
+@@ -0,0 +1,39 @@
++/**
++ * Extracts a JSON object from a model's raw text response. Even when a
++ * provider is explicitly asked for JSON-only output, some models (especially
++ * free/community ones on OpenRouter) still wrap it in a markdown code fence
++ * or add a stray sentence before/after. This strips that defensively.
++ *
++ * This does NOT validate the shape of the JSON — that's Zod's job, always
++ * applied by the caller right after this. This function only gets raw text
++ * into a parseable object or throws.
++ */
++export function extractJsonObject(rawText: string): unknown {
++  const trimmed = rawText.trim();
++
++  // Try straight parse first — the common case when a provider actually
++  // honors JSON-only output.
++  try {
++    return JSON.parse(trimmed);
++  } catch {
++    // fall through to fence-stripping
++  }
++
++  // Strip a ```json ... ``` or ``` ... ``` fence if present.
++  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
++  if (fenceMatch) {
++    try {
++      return JSON.parse(fenceMatch[1].trim());
++    } catch {
++      // fall through
++    }
++  }
++
++  // Last resort: grab the first {...} block in the text.
++  const braceMatch = trimmed.match(/\{[\s\S]*\}/);
++  if (braceMatch) {
++    return JSON.parse(braceMatch[0]);
++  }
++
++  throw new Error('No JSON object found in model response');
++}
+diff --git a/apps/api/src/modules/ai/providers/types.ts b/apps/api/src/modules/ai/providers/types.ts
+new file mode 100644
+index 0000000..ad689dd
+--- /dev/null
++++ b/apps/api/src/modules/ai/providers/types.ts
+@@ -0,0 +1,68 @@
++import type { MealScanResult } from '@thali/schemas';
++
++/**
++ * Every vision provider (Gemini, Groq, OpenRouter, or anything added later)
++ * implements exactly this. The gateway doesn't know or care which provider
++ * it's talking to — that's the whole point: adding a 4th or 5th free
++ * provider later is just writing one more class that implements this
++ * interface and registering it, nothing else changes.
++ */
++export interface VisionProvider {
++  /** Short identifier used in logs and the meal_scan_events table. */
++  readonly name: string;
++
++  analyzeMealPhoto(imageBase64: string, mimeType: string): Promise<MealScanResult>;
++}
++
++/**
++ * Thrown by a provider implementation for ANY failure — network error,
++ * non-200 response, malformed JSON, or a response that fails Zod
++ * validation. The gateway treats all of these identically: this provider
++ * didn't come through, move to the next one. A provider must never
++ * swallow a bad response and return something that merely LOOKS valid.
++ */
++export class VisionProviderError extends Error {
++  constructor(
++    public readonly providerName: string,
++    message: string,
++    public readonly cause?: unknown,
++  ) {
++    super(`[${providerName}] ${message}`);
++    this.name = 'VisionProviderError';
++  }
++}
++
++/**
++ * The prompt instruction shared across all providers, so the "allowed to
++ * say I don't know" contract is consistent regardless of which model
++ * ends up answering. Individual providers may wrap this in their own
++ * system/user message structure, but the substance stays identical.
++ */
++export const MEAL_SCAN_INSTRUCTION = `You are analyzing a single photo for a food-tracking app.
++
++Identify each distinct food item visible in the photo, and estimate its
++quantity using a plain unit (grams, pieces, cups, etc).
++
++Respond with ONLY a JSON object matching this exact shape, no other text:
++{
++  "isFood": boolean,
++  "confidence": number between 0 and 1 (your overall confidence this is a clear, identifiable food photo),
++  "items": [
++    {
++      "name": string (plain food name, e.g. "steamed rice", "grilled chicken breast"),
++      "estimatedQuantity": number,
++      "estimatedUnit": string (e.g. "g", "piece", "cup"),
++      "confidence": number between 0 and 1 (your confidence in THIS item specifically)
++    }
++  ],
++  "notes": string (optional, e.g. "portion size hard to judge from this angle")
++}
++
++IMPORTANT: If the photo is not food, is too blurry or unclear to identify,
++or you are not reasonably confident, set "isFood": false and "items": [].
++Do NOT guess or invent items you are not reasonably confident about. An
++honest "isFood": false is far more useful than a fabricated guess.
++
++Do NOT include calorie counts, macros, or any nutrition numbers — only
++identify the food and estimate quantity. Nutrition values are computed
++separately from a verified database.`;
+diff --git a/apps/api/vitest.config.ts b/apps/api/vitest.config.ts
+index cdd3e6e..131893d 100644
+--- a/apps/api/vitest.config.ts
++++ b/apps/api/vitest.config.ts
+@@ -4,6 +4,10 @@ export default defineConfig({
+   test: {
+     globals: true,
+     environment: 'node',
+-    include: ['src/**/*.test.ts', '../../tests/integration/**/*.test.ts'],
++    include: [
++      'src/**/*.test.ts',
++      '../../tests/integration/**/*.test.ts',
++      '../../tests/unit/ai-gateway/**/*.test.ts',
++    ],
+   },
+ });
+diff --git a/database/migrations/0003_meal_scan_events.sql b/database/migrations/0003_meal_scan_events.sql
+new file mode 100644
+index 0000000..d6a2e66
+--- /dev/null
++++ b/database/migrations/0003_meal_scan_events.sql
+@@ -0,0 +1,22 @@
++-- 0003_meal_scan_events.sql
++-- Observability log for the AI meal-scan feature. No image data is ever
++-- stored here or anywhere else — only the outcome (provider used, status,
++-- identified food names/quantities).
++
++CREATE TABLE IF NOT EXISTS meal_scan_events (
++  id VARCHAR(64) PRIMARY KEY,
++  subscriber_id VARCHAR(64) NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
++  provider_used VARCHAR(32),
++  status VARCHAR(32) NOT NULL,
++  confidence DOUBLE PRECISION,
++  identified_items JSONB,
++  latency_ms INTEGER,
++  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS meal_scan_events_subscriber_idx
++  ON meal_scan_events (subscriber_id, created_at);
++
++-- Useful for spotting a provider quietly degrading before users complain.
++CREATE INDEX IF NOT EXISTS meal_scan_events_provider_status_idx
++  ON meal_scan_events (provider_used, status, created_at);
+diff --git a/packages/schemas/src/index.ts b/packages/schemas/src/index.ts
+index 3f5acfb..5a1bdcb 100644
+--- a/packages/schemas/src/index.ts
++++ b/packages/schemas/src/index.ts
+@@ -249,4 +249,44 @@ export const AdminPatchFoodSchema = AdminCreateFoodSchema.partial().omit({ id: t
+ export type AdminCreateFoodInput = z.infer<typeof AdminCreateFoodSchema>;
+ export type AdminPatchFoodInput = z.infer<typeof AdminPatchFoodSchema>;
+ 
++// AI Meal Scan Schemas
++//
++// This is the contract every vision provider's raw output gets forced into
++// via Zod before anything else in the app is allowed to touch it. A
++// provider's response that doesn't validate against this is treated as a
++// FAILURE (the gateway moves to the next provider), never coerced into a
++// "best guess" shape.
++export const ScannedFoodItemSchema = z.object({
++  name: z.string().min(1),
++  estimatedQuantity: z.number().positive(),
++  estimatedUnit: z.string().min(1),
++  // The model's own confidence in this specific item, 0-1. Lets the
++  // frontend visually flag shaky guesses (e.g. "sauce, hard to tell") for
++  // the user to double check, rather than presenting every item as equally
++  // certain.
++  confidence: z.number().min(0).max(1),
++});
++
++export const MealScanResultSchema = z.object({
++  // The model must be explicitly allowed to say "this isn't food" or "I
++  // can't tell" rather than being forced to always invent a full
++  // breakdown. isFood: false with an empty items array is a valid, honest
++  // result — not a failure.
++  isFood: z.boolean(),
++  confidence: z.number().min(0).max(1),
++  items: z.array(ScannedFoodItemSchema).max(20),
++  notes: z.string().max(500).optional(),
++});
++
++export const ScanMealRequestSchema = z.object({
++  subscriberId: z.string().min(1, 'subscriberId is required'),
++  imageBase64: z.string().min(1, 'imageBase64 is required'),
++  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
++});
++
++export type ScannedFoodItem = z.infer<typeof ScannedFoodItemSchema>;
++export type MealScanResult = z.infer<typeof MealScanResultSchema>;
++export type ScanMealRequestInput = z.infer<typeof ScanMealRequestSchema>;
++
++
+ 
+diff --git a/tests/integration/api-ai-meal-scan.test.ts b/tests/integration/api-ai-meal-scan.test.ts
+new file mode 100644
+index 0000000..80c66fc
+--- /dev/null
++++ b/tests/integration/api-ai-meal-scan.test.ts
+@@ -0,0 +1,219 @@
++import { describe, it, expect, beforeEach } from 'vitest';
++import type { FastifyInstance } from 'fastify';
++import { buildApp } from '../../apps/api/src/app.js';
++import { InMemorySubscriberRepository } from '../../apps/api/src/modules/subscriber/subscriber.repository.js';
++import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/profile.repository.js';
++import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
++import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
++import { VisionProviderError, type VisionProvider } from '../../apps/api/src/modules/ai/providers/types.js';
++import type { MealScanResult } from '@thali/schemas';
++
++function fakeProvider(name: string, result: () => Promise<MealScanResult>): VisionProvider {
++  return { name, analyzeMealPhoto: result };
++}
++
++// A tiny valid base64 string is enough — the fake providers never actually
++// decode or send it anywhere, they just return canned results. This test
++// is about the route/service/gateway wiring, not real image processing.
++const FAKE_IMAGE_BASE64 = Buffer.from('not a real image, just test bytes').toString('base64');
++
++describe('API Integration: AI Meal Scan', () => {
++  let app: FastifyInstance;
++  let subscriberId: string;
++
++  async function buildTestApp(visionProviders: VisionProvider[]) {
++    const subscriberRepo = new InMemorySubscriberRepository();
++    const profileRepo = new InMemoryProfileRepository();
++    const foodService = new FoodService(new InMemoryFoodRepository());
++    await foodService.init();
++
++    const subscriber = await subscriberRepo.create({ id: crypto.randomUUID() });
++    subscriberId = subscriber.id;
++
++    return buildApp({
++      subscriberRepo,
++      profileRepo,
++      foodService,
++      visionProviders,
++    });
++  }
++
++  it('returns success and real food-database matches when a provider identifies food confidently', async () => {
++    app = await buildTestApp([
++      fakeProvider('fake-primary', async () => ({
++        isFood: true,
++        confidence: 0.92,
++        items: [{ name: 'rice', estimatedQuantity: 200, estimatedUnit: 'g', confidence: 0.9 }],
++      })),
++    ]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: FAKE_IMAGE_BASE64, mimeType: 'image/jpeg' },
++    });
++
++    expect(res.statusCode).toBe(200);
++    const body = JSON.parse(res.body);
++    expect(body.status).toBe('success');
++    expect(body.providerUsed).toBe('fake-primary');
++    expect(body.items).toHaveLength(1);
++    // The item should carry real matches from our own food database, not
++    // invented nutrition — "rice" should match something real.
++    expect(body.items[0].matchedFoodCandidates.length).toBeGreaterThan(0);
++  });
++
++  it('falls back to the second provider when the first fails, and reports which one actually served it', async () => {
++    app = await buildTestApp([
++      fakeProvider('flaky', async () => {
++        throw new VisionProviderError('flaky', 'simulated outage');
++      }),
++      fakeProvider('reliable', async () => ({
++        isFood: true,
++        confidence: 0.8,
++        items: [{ name: 'egg', estimatedQuantity: 1, estimatedUnit: 'piece', confidence: 0.8 }],
++      })),
++    ]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: FAKE_IMAGE_BASE64, mimeType: 'image/jpeg' },
++    });
++
++    expect(res.statusCode).toBe(200);
++    const body = JSON.parse(res.body);
++    expect(body.status).toBe('success');
++    expect(body.providerUsed).toBe('reliable');
++  });
++
++  it('returns an honest failure message when every provider fails — never a fabricated meal', async () => {
++    app = await buildTestApp([
++      fakeProvider('dead1', async () => {
++        throw new VisionProviderError('dead1', 'down');
++      }),
++      fakeProvider('dead2', async () => {
++        throw new VisionProviderError('dead2', 'also down');
++      }),
++    ]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: FAKE_IMAGE_BASE64, mimeType: 'image/jpeg' },
++    });
++
++    expect(res.statusCode).toBe(200);
++    const body = JSON.parse(res.body);
++    expect(body.status).toBe('all_providers_failed');
++    expect(body.providerUsed).toBeNull();
++    expect(body.items).toEqual([]);
++    expect(body.message).toMatch(/manually/i);
++  });
++
++  it('respects an honest "not food" answer from the model rather than forcing a guess', async () => {
++    app = await buildTestApp([
++      fakeProvider('honest', async () => ({
++        isFood: false,
++        confidence: 0.95,
++        items: [],
++        notes: 'This appears to be a photo of a laptop, not food.',
++      })),
++    ]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: FAKE_IMAGE_BASE64, mimeType: 'image/jpeg' },
++    });
++
++    expect(res.statusCode).toBe(200);
++    const body = JSON.parse(res.body);
++    expect(body.status).toBe('not_food');
++    expect(body.items).toEqual([]);
++  });
++
++  it('flags a low-confidence result distinctly from a confident success', async () => {
++    app = await buildTestApp([
++      fakeProvider('unsure', async () => ({
++        isFood: true,
++        confidence: 0.2,
++        items: [{ name: 'something', estimatedQuantity: 1, estimatedUnit: 'serving', confidence: 0.2 }],
++      })),
++    ]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: FAKE_IMAGE_BASE64, mimeType: 'image/jpeg' },
++    });
++
++    expect(res.statusCode).toBe(200);
++    const body = JSON.parse(res.body);
++    expect(body.status).toBe('low_confidence');
++    expect(body.message).toMatch(/not fully confident/i);
++  });
++
++  it('rejects a request with no vision providers configured as an honest failure, not a crash', async () => {
++    app = await buildTestApp([]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: FAKE_IMAGE_BASE64, mimeType: 'image/jpeg' },
++    });
++
++    expect(res.statusCode).toBe(200);
++    const body = JSON.parse(res.body);
++    expect(body.status).toBe('all_providers_failed');
++  });
++
++  it('rejects an oversized image before ever calling a provider', async () => {
++    let providerWasCalled = false;
++    app = await buildTestApp([
++      fakeProvider('shouldNotBeCalled', async () => {
++        providerWasCalled = true;
++        return { isFood: true, confidence: 0.9, items: [] };
++      }),
++    ]);
++
++    // 9MB of base64 text decodes to ~6.75MB — clearly over the service's
++    // 6MB decoded-size ceiling, while staying safely under the route's
++    // own 10MB Fastify bodyLimit so this test isolates the service's
++    // check specifically, not Fastify's separate body-size guard.
++    const oversizedBase64 = 'A'.repeat(9 * 1024 * 1024);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: oversizedBase64, mimeType: 'image/jpeg' },
++    });
++
++    expect(res.statusCode).toBe(413);
++    expect(providerWasCalled).toBe(false);
++  });
++
++  it('rejects a request missing required fields with a 400, not a 500', async () => {
++    app = await buildTestApp([fakeProvider('unused', async () => ({ isFood: true, confidence: 0.9, items: [] }))]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId }, // missing imageBase64 and mimeType
++    });
++
++    expect(res.statusCode).toBe(400);
++  });
++
++  it('rejects an unsupported mime type', async () => {
++    app = await buildTestApp([fakeProvider('unused', async () => ({ isFood: true, confidence: 0.9, items: [] }))]);
++
++    const res = await app.inject({
++      method: 'POST',
++      url: '/api/ai/scan-meal',
++      payload: { subscriberId, imageBase64: FAKE_IMAGE_BASE64, mimeType: 'application/pdf' },
++    });
++
++    expect(res.statusCode).toBe(400);
++  });
++});
+diff --git a/tests/unit/ai-gateway/gateway.test.ts b/tests/unit/ai-gateway/gateway.test.ts
+new file mode 100644
+index 0000000..264282f
+--- /dev/null
++++ b/tests/unit/ai-gateway/gateway.test.ts
+@@ -0,0 +1,156 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++import { VisionGateway } from '../../../apps/api/src/modules/ai/gateway.js';
++import { VisionProviderError, type VisionProvider } from '../../../apps/api/src/modules/ai/providers/types.js';
++import type { MealScanResult } from '@thali/schemas';
++
++const SUCCESS_RESULT: MealScanResult = {
++  isFood: true,
++  confidence: 0.9,
++  items: [{ name: 'rice', estimatedQuantity: 200, estimatedUnit: 'g', confidence: 0.9 }],
++};
++
++function fakeProvider(
++  name: string,
++  behavior: (() => Promise<MealScanResult>) | (() => Promise<MealScanResult>)[],
++): VisionProvider {
++  let callIndex = 0;
++  const behaviors = Array.isArray(behavior) ? behavior : [behavior];
++  return {
++    name,
++    analyzeMealPhoto: vi.fn(async () => {
++      const b = behaviors[Math.min(callIndex, behaviors.length - 1)];
++      callIndex++;
++      return b();
++    }),
++  };
++}
++
++function alwaysFails(name: string): () => Promise<MealScanResult> {
++  return async () => {
++    throw new VisionProviderError(name, 'simulated failure');
++  };
++}
++
++function alwaysSucceeds(): () => Promise<MealScanResult> {
++  return async () => SUCCESS_RESULT;
++}
++
++describe('VisionGateway', () => {
++  beforeEach(() => {
++    vi.useRealTimers();
++  });
++
++  it('returns success from the first provider when it works', async () => {
++    const primary = fakeProvider('primary', alwaysSucceeds());
++    const secondary = fakeProvider('secondary', alwaysSucceeds());
++    const gateway = new VisionGateway([primary, secondary]);
++
++    const outcome = await gateway.scan('base64', 'image/jpeg');
++
++    expect(outcome.outcome).toBe('success');
++    if (outcome.outcome === 'success') {
++      expect(outcome.providerUsed).toBe('primary');
++    }
++    expect(secondary.analyzeMealPhoto).not.toHaveBeenCalled();
++  });
++
++  it('falls back to the second provider when the first fails', async () => {
++    const primary = fakeProvider('primary', alwaysFails('primary'));
++    const secondary = fakeProvider('secondary', alwaysSucceeds());
++    const gateway = new VisionGateway([primary, secondary]);
++
++    const outcome = await gateway.scan('base64', 'image/jpeg');
++
++    expect(outcome.outcome).toBe('success');
++    if (outcome.outcome === 'success') {
++      expect(outcome.providerUsed).toBe('secondary');
++    }
++  });
++
++  it('falls back through three providers in order', async () => {
++    const first = fakeProvider('first', alwaysFails('first'));
++    const second = fakeProvider('second', alwaysFails('second'));
++    const third = fakeProvider('third', alwaysSucceeds());
++    const gateway = new VisionGateway([first, second, third]);
++
++    const outcome = await gateway.scan('base64', 'image/jpeg');
++
++    expect(outcome.outcome).toBe('success');
++    if (outcome.outcome === 'success') {
++      expect(outcome.providerUsed).toBe('third');
++    }
++  });
++
++  it('returns an honest all_providers_failed outcome when every provider fails — never a fabricated result', async () => {
++    const first = fakeProvider('first', alwaysFails('first'));
++    const second = fakeProvider('second', alwaysFails('second'));
++    const gateway = new VisionGateway([first, second]);
++
++    const outcome = await gateway.scan('base64', 'image/jpeg');
++
++    expect(outcome.outcome).toBe('all_providers_failed');
++    if (outcome.outcome === 'all_providers_failed') {
++      expect(outcome.attemptedProviders).toEqual(['first', 'second']);
++    }
++  });
++
++  it('opens the circuit after repeated consecutive failures and skips that provider on the next request', async () => {
++    const flaky = fakeProvider('flaky', alwaysFails('flaky'));
++    const backup = fakeProvider('backup', alwaysSucceeds());
++    const gateway = new VisionGateway([flaky, backup]);
++
++    // Three consecutive failures trips the circuit (FAILURE_THRESHOLD = 3).
++    await gateway.scan('base64', 'image/jpeg');
++    await gateway.scan('base64', 'image/jpeg');
++    await gateway.scan('base64', 'image/jpeg');
++    expect(flaky.analyzeMealPhoto).toHaveBeenCalledTimes(3);
++
++    // Circuit should now be open — the next call must skip straight to
++    // backup without even attempting flaky again.
++    const outcome = await gateway.scan('base64', 'image/jpeg');
++    expect(flaky.analyzeMealPhoto).toHaveBeenCalledTimes(3); // unchanged
++    expect(outcome.outcome).toBe('success');
++    if (outcome.outcome === 'success') {
++      expect(outcome.providerUsed).toBe('backup');
++    }
++  });
++
++  it('a successful call resets the failure count, so occasional single failures never trip the circuit', async () => {
++    const results: (() => Promise<MealScanResult>)[] = [
++      alwaysFails('sometimes'),
++      alwaysSucceeds(),
++      alwaysFails('sometimes'),
++      alwaysSucceeds(),
++    ];
++    const sometimes = fakeProvider('sometimes', results);
++    const gateway = new VisionGateway([sometimes]);
++
++    const first = await gateway.scan('base64', 'image/jpeg'); // fails -> all_providers_failed (only provider)
++    expect(first.outcome).toBe('all_providers_failed');
++
++    const second = await gateway.scan('base64', 'image/jpeg'); // succeeds, resets failure count
++    expect(second.outcome).toBe('success');
++
++    const third = await gateway.scan('base64', 'image/jpeg'); // fails again (count is 1, not tripped)
++    expect(third.outcome).toBe('all_providers_failed');
++
++    const fourth = await gateway.scan('base64', 'image/jpeg'); // succeeds — proves circuit never opened
++    expect(fourth.outcome).toBe('success');
++    expect(sometimes.analyzeMealPhoto).toHaveBeenCalledTimes(4);
++  });
++
++  it('times out a provider that hangs, and moves on to the next one', async () => {
++    const hanging = fakeProvider('hanging', () => new Promise<MealScanResult>(() => {
++      // never resolves
++    }));
++    const backup = fakeProvider('backup', alwaysSucceeds());
++    const gateway = new VisionGateway([hanging, backup], { perCallTimeoutMs: 50 });
++
++    const outcome = await gateway.scan('base64', 'image/jpeg');
++
++    expect(outcome.outcome).toBe('success');
++    if (outcome.outcome === 'success') {
++      expect(outcome.providerUsed).toBe('backup');
++    }
++  });
++});
+-- 
+2.43.0
+
