@@ -77,15 +77,16 @@ test.describe('Core User Flow E2E', () => {
 
     // 4. PROGRESS & WEIGHT TRACKING
     await page.goto('/progress');
-    await expect(page.getByText('Body Weight Tracking')).toBeVisible();
-    await expect(page.getByText(/Weekly consistency/i)).toBeVisible();
+    await expect(page.getByText('Body Weight Trend')).toBeVisible();
+    await expect(page.getByText(/Weekly Log Rate/i)).toBeVisible();
 
-    // Record weight entry using the number input
+    // Record weight entry using the quick log modal
+    await page.getByRole('button', { name: /Log Weight/i }).click();
     const weightInput = page.locator('input[type="number"]');
     await weightInput.fill('70.5');
-    await page.getByRole('button', { name: /Log Weight/i }).click();
+    await page.locator('form button[type="submit"]').click();
 
-    // Verify weight log entry is visible in the history list (span inside listitem)
-    await expect(page.getByRole('listitem').getByText('70.5 kg')).toBeVisible();
+    // Verify weight log entry is visible in the history list
+    await expect(page.getByText('70.5 kg').first()).toBeVisible();
   });
 });

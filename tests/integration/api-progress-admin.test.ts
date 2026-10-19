@@ -127,7 +127,33 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
   });
 
   describe('Admin Food Catalog Management API', () => {
-    it('POST /api/admin/foods adds a new food item and makes it immediately searchable', async () => {
+    const adminHeaders = {
+      'x-admin-key': 'amardiet-admin-secret-2026',
+    };
+
+    it('POST /api/admin/foods rejects unauthenticated requests with 401', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/foods',
+        payload: {
+          canonicalName: 'Unauthorized Food Item',
+          cuisineTags: ['snack'],
+          category: 'snack',
+          caloriesPer100g: 100,
+          proteinPer100g: 5,
+          carbsPer100g: 10,
+          fatPer100g: 2,
+          fiberPer100g: 1,
+          commonServings: [{ label: '1 serving', grams: 100 }],
+        },
+      });
+
+      expect(res.statusCode).toBe(401);
+      const body = JSON.parse(res.body);
+      expect(body.error).toContain('Unauthorized');
+    });
+
+    it('POST /api/admin/foods adds a new food item when authenticated with x-admin-key', async () => {
       const newFoodPayload = {
         canonicalName: 'Dragon Fruit Smoothie Bowl',
         localNames: ['ড্রাগন ফ্রুট স্মুদি'],
@@ -147,6 +173,7 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
       const createRes = await app.inject({
         method: 'POST',
         url: '/api/admin/foods',
+        headers: adminHeaders,
         payload: newFoodPayload,
       });
 
@@ -168,11 +195,22 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
       expect(searchBody.foods[0].canonicalName).toBe('Dragon Fruit Smoothie Bowl');
     });
 
-    it('PATCH /api/admin/foods/:id updates existing food item nutrition and info', async () => {
+    it('PATCH /api/admin/foods/:id rejects unauthenticated updates with 401', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/admin/foods/some-id',
+        payload: { caloriesPer100g: 200 },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('PATCH /api/admin/foods/:id updates existing food item nutrition and info when authenticated', async () => {
       // 1. Create a food item
       const createRes = await app.inject({
         method: 'POST',
         url: '/api/admin/foods',
+        headers: adminHeaders,
         payload: {
           canonicalName: 'Test Energy Bar',
           cuisineTags: ['snack', 'packaged'],
@@ -191,6 +229,7 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
       const patchRes = await app.inject({
         method: 'PATCH',
         url: `/api/admin/foods/${created.id}`,
+        headers: adminHeaders,
         payload: {
           caloriesPer100g: 380,
           proteinPer100g: 15,

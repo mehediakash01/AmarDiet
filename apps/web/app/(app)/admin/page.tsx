@@ -1,17 +1,27 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Check, UtensilsCrossed, ShieldAlert } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Plus, Search, Check, UtensilsCrossed, ShieldAlert, KeyRound } from 'lucide-react';
 import type { FoodItem } from '@thali/types';
 import { FOOD_DATASET } from '@thali/food-data';
 import { db } from '@/lib/db/db';
 import { getApiBaseUrl } from '@/lib/identity/subscriberId';
+import { useNutritionStore } from '@/lib/store/useNutritionStore';
 
 export default function AdminCatalogPage() {
+  const router = useRouter();
+  const isAdmin = useNutritionStore((s) => s.isAdmin);
+  const isSubscriberReady = useNutritionStore((s) => s.isSubscriberReady);
+  const adminKey = useNutritionStore((s) => s.adminKey);
+  const setAdminKey = useNutritionStore((s) => s.setAdminKey);
+
   const [foods, setFoods] = useState<FoodItem[]>(FOOD_DATASET);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [authKeyInput, setAuthKeyInput] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Form State
   const [canonicalName, setCanonicalName] = useState('');
@@ -25,6 +35,16 @@ export default function AdminCatalogPage() {
   const [servingLabel, setServingLabel] = useState('1 standard serving');
   const [servingGrams, setServingGrams] = useState('150');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Route-level protection: redirect non-admin visitors
+  useEffect(() => {
+    if (isSubscriberReady && !isAdmin) {
+      const timer = setTimeout(() => {
+        router.replace('/dashboard');
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isSubscriberReady, isAdmin, router]);
 
   useEffect(() => {
     async function loadAllFoods() {
@@ -94,10 +114,13 @@ export default function AdminCatalogPage() {
     try {
       // 1. Add to Dexie local DB for immediate local search
       await db.foods.put(newFood);
-      // 2. Post to API
+      // 2. Post to API with admin auth key
       await fetch(`${getApiBaseUrl()}/api/admin/foods`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey || '',
+        },
         body: JSON.stringify(newFood),
       });
     } catch {
@@ -112,6 +135,56 @@ export default function AdminCatalogPage() {
     setCanonicalName('');
     setLocalName('');
   };
+
+  const handleUnlockAdmin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const expectedKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'amardiet-admin-secret-2026';
+    if (authKeyInput.trim() === expectedKey) {
+      setAdminKey(authKeyInput.trim());
+      setAuthError(null);
+    } else {
+      setAuthError('Invalid admin secret key.');
+    }
+  };
+
+  if (!isSubscriberReady) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh] text-text-muted text-sm">
+        Checking authorization...
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-md mx-auto my-12 p-6 rounded-2xl bg-surface/90 border border-border text-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h2 className="text-xl font-bold text-text-primary">Admin Access Required</h2>
+        <p className="text-sm text-text-secondary">
+          This area is restricted to authorized personnel. Non-admin visitors are automatically redirected to the dashboard.
+        </p>
+
+        <form onSubmit={handleUnlockAdmin} className="pt-2 space-y-3">
+          <input
+            type="password"
+            placeholder="Enter admin key..."
+            value={authKeyInput}
+            onChange={(e) => setAuthKeyInput(e.target.value)}
+            className="w-full bg-zinc-900 border border-border focus:border-cyan-400 text-text-primary text-sm rounded-xl px-4 py-2.5 outline-none"
+          />
+          {authError && <p className="text-xs text-red-400">{authError}</p>}
+          <button
+            type="submit"
+            className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-semibold text-sm transition-all"
+          >
+            Authenticate
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

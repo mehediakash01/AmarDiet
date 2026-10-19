@@ -64,10 +64,13 @@ export interface NutritionState {
   isLoading: boolean;
   planError: string | null;
   isScanModalOpen: boolean;
+  isAdmin: boolean;
+  adminKey: string | null;
 
   // Actions
   initSubscriber: () => Promise<void>;
   setSubscriberId: (id: string) => void;
+  setAdminKey: (key: string | null) => void;
   setProfile: (profile: UserProfile) => Promise<void>;
   setSelectedDate: (date: string) => void;
   openFoodSearch: (slot: MealSlot) => void;
@@ -150,14 +153,37 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   isLoading: false,
   planError: null,
   isScanModalOpen: false,
+  isAdmin: false,
+  adminKey: null,
 
   initSubscriber: async () => {
     const id = await getOrCreateSubscriberId();
-    set({ subscriberId: id, isSubscriberReady: true });
+    let adminKey: string | null = null;
+    if (typeof window !== 'undefined') {
+      adminKey = localStorage.getItem('amardiet_admin_key') || sessionStorage.getItem('amardiet_admin_key');
+    }
+    const expectedKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'amardiet-admin-secret-2026';
+    const isAdmin = !!(adminKey && adminKey === expectedKey);
+
+    set({ subscriberId: id, isSubscriberReady: true, isAdmin, adminKey });
     await get().loadProfile();
   },
 
   setSubscriberId: (id: string) => set({ subscriberId: id }),
+
+  setAdminKey: (key: string | null) => {
+    const expectedKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'amardiet-admin-secret-2026';
+    const isAdmin = !!(key && key === expectedKey);
+    if (typeof window !== 'undefined') {
+      if (key) {
+        localStorage.setItem('amardiet_admin_key', key);
+      } else {
+        localStorage.removeItem('amardiet_admin_key');
+        sessionStorage.removeItem('amardiet_admin_key');
+      }
+    }
+    set({ adminKey: key, isAdmin });
+  },
 
   setProfile: async (profile: UserProfile) => {
     const nutrition = computeLocalNutrition(profile);
