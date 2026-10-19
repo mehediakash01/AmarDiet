@@ -2,6 +2,9 @@
 
 import React from 'react';
 import type { CalculatedNutrition, NutritionTargets } from '@thali/types';
+import { Flame, Beef, Wheat, Droplet } from 'lucide-react';
+import { Card } from './ui/Card';
+import { ProgressBar } from './ui/ProgressBar';
 
 interface PlateRingChartProps {
   consumed: CalculatedNutrition;
@@ -13,146 +16,185 @@ export function PlateRingChart({ consumed, targets }: PlateRingChartProps) {
   const consumedKcal = consumed.calories;
   const remainingKcal = Math.max(0, targetKcal - consumedKcal);
   const isOver = consumedKcal > targetKcal;
+  const overKcal = Math.round(consumedKcal - targetKcal);
 
   const percentConsumed = Math.min(100, Math.round((consumedKcal / targetKcal) * 100));
 
   // SVG Ring calculation
-  const radius = 58;
+  const radius = 62;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (percentConsumed / 100) * circumference;
 
-  // Macro percentages against their respective targets
-  const proteinPercent = Math.min(
-    100,
-    Math.round((consumed.protein / targets.macros.protein_g) * 100),
-  );
-  const carbsPercent = Math.min(
-    100,
-    Math.round((consumed.carbs / targets.macros.carbs_g) * 100),
-  );
-  const fatPercent = Math.min(
-    100,
-    Math.round((consumed.fat / targets.macros.fat_g) * 100),
-  );
+  // Macros calculations
+  const pTarget = targets.macros.protein_g;
+  const cTarget = targets.macros.carbs_g;
+  const fTarget = targets.macros.fat_g;
+
+  const pConsumed = Math.round(consumed.protein);
+  const cConsumed = Math.round(consumed.carbs);
+  const fConsumed = Math.round(consumed.fat);
+
+  const pRemaining = Math.max(0, Math.round(pTarget - pConsumed));
+  const cRemaining = Math.max(0, Math.round(cTarget - cConsumed));
+  const fRemaining = Math.max(0, Math.round(fTarget - fConsumed));
 
   return (
-    <div className="bg-surface border border-border rounded-lg p-5">
-      <div className="text-xs uppercase font-bold tracking-wider text-muted mb-3">
-        Today's Energy Balance
+    <Card variant="glass" className="p-5 sm:p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border/60 pb-3">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400/50" />
+          <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">
+            Today's Energy Balance
+          </span>
+        </div>
+        <div className="flex items-center space-x-1.5 text-xs font-semibold text-text-muted">
+          <Flame className="w-3.5 h-3.5 text-macro-calories" />
+          <span className="font-tabular text-text-primary">{Math.round(consumedKcal)}</span>
+          <span>/</span>
+          <span className="font-tabular">{Math.round(targetKcal)} kcal</span>
+        </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+      {/* Hero Circular Ring & Center Readout */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-6 py-1">
         {/* SVG Circular Ring */}
-        <div className="relative w-36 h-36 flex items-center justify-center flex-shrink-0">
-          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 140 140">
-            {/* Background ring */}
+        <div className="relative w-44 h-44 flex items-center justify-center flex-shrink-0">
+          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 150 150">
+            {/* Background Track */}
             <circle
-              cx="70"
-              cy="70"
+              cx="75"
+              cy="75"
               r={radius}
-              stroke="#DFD7C2"
-              strokeWidth="12"
+              stroke="rgb(39 39 42 / 0.8)"
+              strokeWidth="11"
               fill="transparent"
             />
-            {/* Consumed ring */}
+            {/* Consumed Ring with Glow */}
             <circle
-              cx="70"
-              cy="70"
+              cx="75"
+              cy="75"
               r={radius}
-              stroke="#1F4D3E"
-              strokeWidth="12"
+              stroke={isOver ? '#f87171' : '#22d3ee'}
+              strokeWidth="11"
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
               strokeLinecap="round"
               fill="transparent"
-              className="transition-all duration-500 ease-out"
+              className="transition-all duration-700 ease-out"
+              style={{
+                filter: isOver
+                  ? 'drop-shadow(0 0 6px rgb(248 113 113 / 0.4))'
+                  : 'drop-shadow(0 0 8px rgb(34 211 238 / 0.35))',
+              }}
             />
           </svg>
-          <div className="absolute flex flex-col items-center justify-center text-center">
-            <span className="text-xs text-muted font-medium">Percent</span>
-            <span className="text-xl font-bold font-serif text-primary">
-              {percentConsumed}%
+
+          {/* Numeral Center Stage */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none">
+            <span
+              className={`text-3xl sm:text-4xl font-extrabold font-tabular tracking-tight ${
+                isOver ? 'text-red-400' : 'text-text-primary'
+              }`}
+            >
+              {isOver ? `+${overKcal}` : Math.round(remainingKcal)}
+            </span>
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${
+                isOver ? 'text-red-400/90' : 'text-text-secondary'
+              }`}
+            >
+              {isOver ? 'Kcal Exceeded' : 'Kcal Remaining'}
+            </span>
+            <span className="text-[11px] font-medium text-text-muted mt-1 font-tabular">
+              {percentConsumed}% logged
             </span>
           </div>
         </div>
 
-        {/* Slab-serif numeral readout */}
-        <div className="flex-1 space-y-1 text-center sm:text-left">
-          <div className="text-sm text-muted">
-            {isOver ? 'Calorie limit exceeded by' : 'Remaining energy today'}
+        {/* Narrative Energy Insight */}
+        <div className="flex-1 space-y-2 text-center sm:text-left">
+          <div className="text-sm font-semibold text-text-primary">
+            {isOver
+              ? 'Calorie ceiling exceeded'
+              : remainingKcal > 300
+                ? 'Plenty of fuel remaining'
+                : 'Nearing daily energy target'}
           </div>
-          <div className="text-4xl sm:text-5xl font-serif font-bold text-primary tracking-tight">
-            {isOver ? Math.round(consumedKcal - targetKcal) : Math.round(remainingKcal)}
-            <span className="text-base font-normal text-muted ml-2">kcal {isOver ? 'over' : 'left'}</span>
-          </div>
-          <div className="text-xs text-muted">
-            {Math.round(consumedKcal)} of {Math.round(targetKcal)} kcal target logged
+          <p className="text-xs text-text-secondary leading-relaxed max-w-sm">
+            {isOver
+              ? `You've exceeded your daily intake by ${overKcal} kcal. Focus on hydration and gentle mobility.`
+              : remainingKcal > 400
+                ? `You have ${Math.round(remainingKcal)} kcal left across remaining meal slots. Balance with healthy protein & fiber.`
+                : 'You are on track with your calculated energy target for today.'}
+          </p>
+          <div className="pt-2 flex items-center justify-center sm:justify-start gap-2">
+            <span className="text-[11px] px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-border text-text-secondary font-medium">
+              Target: <strong className="text-text-primary font-tabular">{Math.round(targetKcal)}</strong> kcal
+            </span>
+            <span className="text-[11px] px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-border text-text-secondary font-medium">
+              Burned/BMR: <strong className="text-text-primary font-tabular">{Math.round(targets.bmr)}</strong> kcal
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Indigo Insight Line */}
-      <div className="mt-5 pt-3 border-t border-border bg-secondary-light/40 -mx-5 -mb-5 p-4 rounded-b-lg flex items-center justify-between text-xs text-secondary font-medium">
-        <span>Daily Insight</span>
-        <span>
-          {isOver
-            ? 'Energy target exceeded. Protein is at ' + proteinPercent + '%.'
-            : remainingKcal > 400
-              ? `${Math.round(remainingKcal)} kcal open for your remaining meal slots.`
-              : 'On track with your daily calorie allocation.'}
-        </span>
-      </div>
-
-      {/* Macro Breakdown Bars */}
-      <div className="grid grid-cols-3 gap-3 mt-6 pt-4 border-t border-border">
-        {/* Protein */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="font-semibold text-dark">Protein</span>
-            <span className="text-muted">
-              {Math.round(consumed.protein)}/{Math.round(targets.macros.protein_g)}g
+      {/* Segmented Macro Tiles (Protein, Carbs, Fat) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+        {/* Protein Card */}
+        <div className="p-3.5 rounded-xl bg-zinc-900/90 border border-border/70 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1.5">
+              <Beef className="w-3.5 h-3.5 text-macro-protein" />
+              <span className="text-xs font-semibold text-text-primary">Protein</span>
+            </div>
+            <span className="text-[11px] font-medium text-text-muted font-tabular">
+              {pRemaining > 0 ? `${pRemaining}g left` : 'Met'}
             </span>
           </div>
-          <div className="w-full bg-background rounded-full h-2 overflow-hidden border border-border">
-            <div
-              className="bg-primary h-full rounded-full transition-all duration-300"
-              style={{ width: `${proteinPercent}%` }}
-            />
+          <ProgressBar value={pConsumed} max={pTarget} variant="protein" size="sm" />
+          <div className="flex justify-between text-xs font-tabular">
+            <span className="font-bold text-macro-protein">{pConsumed}g</span>
+            <span className="text-text-muted">/ {Math.round(pTarget)}g</span>
           </div>
         </div>
 
-        {/* Carbs */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="font-semibold text-dark">Carbs</span>
-            <span className="text-muted">
-              {Math.round(consumed.carbs)}/{Math.round(targets.macros.carbs_g)}g
+        {/* Carbs Card */}
+        <div className="p-3.5 rounded-xl bg-zinc-900/90 border border-border/70 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1.5">
+              <Wheat className="w-3.5 h-3.5 text-macro-carbs" />
+              <span className="text-xs font-semibold text-text-primary">Carbs</span>
+            </div>
+            <span className="text-[11px] font-medium text-text-muted font-tabular">
+              {cRemaining > 0 ? `${cRemaining}g left` : 'Met'}
             </span>
           </div>
-          <div className="w-full bg-background rounded-full h-2 overflow-hidden border border-border">
-            <div
-              className="bg-accent h-full rounded-full transition-all duration-300"
-              style={{ width: `${carbsPercent}%` }}
-            />
+          <ProgressBar value={cConsumed} max={cTarget} variant="carbs" size="sm" />
+          <div className="flex justify-between text-xs font-tabular">
+            <span className="font-bold text-macro-carbs">{cConsumed}g</span>
+            <span className="text-text-muted">/ {Math.round(cTarget)}g</span>
           </div>
         </div>
 
-        {/* Fat */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="font-semibold text-dark">Fat</span>
-            <span className="text-muted">
-              {Math.round(consumed.fat)}/{Math.round(targets.macros.fat_g)}g
+        {/* Fat Card */}
+        <div className="p-3.5 rounded-xl bg-zinc-900/90 border border-border/70 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1.5">
+              <Droplet className="w-3.5 h-3.5 text-macro-fat" />
+              <span className="text-xs font-semibold text-text-primary">Fat</span>
+            </div>
+            <span className="text-[11px] font-medium text-text-muted font-tabular">
+              {fRemaining > 0 ? `${fRemaining}g left` : 'Met'}
             </span>
           </div>
-          <div className="w-full bg-background rounded-full h-2 overflow-hidden border border-border">
-            <div
-              className="bg-secondary h-full rounded-full transition-all duration-300"
-              style={{ width: `${fatPercent}%` }}
-            />
+          <ProgressBar value={fConsumed} max={fTarget} variant="fat" size="sm" />
+          <div className="flex justify-between text-xs font-tabular">
+            <span className="font-bold text-macro-fat">{fConsumed}g</span>
+            <span className="text-text-muted">/ {Math.round(fTarget)}g</span>
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
