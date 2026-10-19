@@ -38,3 +38,11 @@ test-results/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Agent skills and lockfile
+.agents/
+skills-lock.json
+
+# Local patch files and scratch directory
+*.patch
+.scratch/

@@ -6,3 +6,17 @@
 4. **Deterministic Math**: NEVER use AI or LLMs for arithmetic or nutrition math. All calculations belong in `packages/nutrition-engine`.
 5. **Cuisine Neutrality**: Treat all food data as a single universal dataset. Never filter or restrict food items by cuisine or tier.
 6. **Data Contract**: Validate all schema structures using Zod before persisting.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical five-role triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (`GLOSSARY.md` + `docs/adr/` at the repo root). See `docs/agents/domain.md`.
