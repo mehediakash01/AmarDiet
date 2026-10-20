@@ -32,7 +32,11 @@
 
 try {
   if (typeof process.loadEnvFile === 'function') {
-    process.loadEnvFile();
+    try {
+      process.loadEnvFile();
+    } catch {
+      process.loadEnvFile('apps/api/.env');
+    }
   }
 } catch {
   // .env file is optional
