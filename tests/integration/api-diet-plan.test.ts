@@ -274,5 +274,71 @@ describe('API Integration: Diet Plan Generation & Meal Customization', () => {
       expect(updatedLunch.items.length).toBe(initialItemsCount - 1);
       expect(updatedLunch.subtotal.calories).toBeLessThan(lunchMeal.subtotal.calories);
     });
+
+    it('supports swapping an expensive protein (chicken breast) for a budget one (egg) with live recalculation', async () => {
+      // Step 1: Add chicken breast to Monday dinner
+      const addChickenRes = await app.inject({
+        method: 'POST',
+        url: '/api/diet-plan/item/add',
+        payload: {
+          subscriberId,
+          day: 'Monday',
+          mealSlot: 'dinner',
+          foodId: 'food_western_grilled_chicken_breast',
+          quantity: 200,
+          unit: 'g',
+        },
+      });
+      expect(addChickenRes.statusCode).toBe(200);
+      const planWithChicken = JSON.parse(addChickenRes.body);
+      const monDinnerWithChicken = planWithChicken.days[0].meals.find(
+        (m: { mealSlot: string }) => m.mealSlot === 'dinner',
+      );
+      const chickenCalories = monDinnerWithChicken.subtotal.calories;
+
+      // Step 2: Remove chicken breast
+      const removeRes = await app.inject({
+        method: 'DELETE',
+        url: '/api/diet-plan/item/remove',
+        payload: {
+          subscriberId,
+          day: 'Monday',
+          mealSlot: 'dinner',
+          foodId: 'food_western_grilled_chicken_breast',
+        },
+      });
+      expect(removeRes.statusCode).toBe(200);
+
+      // Step 3: Replace with Bengali Egg Curry (budget staple)
+      const addEggRes = await app.inject({
+        method: 'POST',
+        url: '/api/diet-plan/item/add',
+        payload: {
+          subscriberId,
+          day: 'Monday',
+          mealSlot: 'dinner',
+          foodId: 'food_bengali_dimer_dalna',
+          quantity: 150,
+          unit: 'g',
+        },
+      });
+      expect(addEggRes.statusCode).toBe(200);
+      const finalPlan = JSON.parse(addEggRes.body);
+
+      const monFinal = finalPlan.days[0];
+      const monDinnerFinal = monFinal.meals.find(
+        (m: { mealSlot: string }) => m.mealSlot === 'dinner',
+      );
+
+      // Meal is customized, contains egg, does not contain chicken
+      expect(monDinnerFinal.isCustomized).toBe(true);
+      expect(monDinnerFinal.items.some((i: { foodId: string }) => i.foodId === 'food_bengali_dimer_dalna')).toBe(true);
+      expect(monDinnerFinal.items.some((i: { foodId: string }) => i.foodId === 'food_western_grilled_chicken_breast')).toBe(false);
+
+      // Totals recalculated accurately
+      expect(monDinnerFinal.subtotal.calories).not.toBe(chickenCalories);
+      expect(monDinnerFinal.subtotal.protein).toBeGreaterThan(10);
+      expect(monFinal.totals.calories).toBeGreaterThan(1000);
+    });
   });
 });

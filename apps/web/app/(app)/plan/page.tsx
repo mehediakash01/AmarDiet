@@ -198,28 +198,37 @@ export default function DietPlanPage() {
                 className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden"
               >
                 {/* Meal header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/60">
+                <div className="flex flex-wrap items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/60 gap-2">
                   <div className="flex items-center gap-2">
                     <span className={`font-bold text-sm ${color}`}>{slotLabel}</span>
                     {meal.isCustomized && (
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                        Edited
+                        Customized
                       </span>
                     )}
                   </div>
-                  <span className="text-xs font-tabular font-semibold text-zinc-400">
-                    {Math.round(meal.subtotal.calories)}{' '}
-                    <span className="text-zinc-600 font-normal">kcal</span>
-                    {' · '}
+                  <div className="text-xs font-tabular font-semibold text-zinc-400 flex items-center gap-2">
+                    <span>
+                      {Math.round(meal.subtotal.calories)}{' '}
+                      <span className="text-zinc-600 font-normal">kcal</span>
+                      {meal.targetNutrition?.calories ? (
+                        <span className="text-zinc-500 text-[11px] font-normal">
+                          {' '}/ {Math.round(meal.targetNutrition.calories)} target
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="text-zinc-700">·</span>
                     <span className="text-purple-400">{Math.round(meal.subtotal.protein)}g P</span>
-                  </span>
+                    <span className="text-emerald-400">{Math.round(meal.subtotal.carbs)}g C</span>
+                    <span className="text-amber-400">{Math.round(meal.subtotal.fat)}g F</span>
+                  </div>
                 </div>
 
                 {/* Food items */}
                 <ul className="divide-y divide-zinc-800/60">
                   {meal.items.length === 0 ? (
                     <li className="px-4 py-3 text-xs text-zinc-600 italic">
-                      No items — use Add item below.
+                      No items — use Add item below to add foods to this meal.
                     </li>
                   ) : (
                     meal.items.map((item, idx) => (
@@ -234,6 +243,12 @@ export default function DietPlanPage() {
                           <div className="text-[11px] text-zinc-500 font-tabular">
                             {item.quantity} {item.unit} ·{' '}
                             <span className="text-zinc-400">{Math.round(item.calculatedNutrition.calories)} kcal</span>
+                            {' · '}
+                            <span className="text-purple-400/80">{Math.round(item.calculatedNutrition.protein)}g P</span>
+                            {' · '}
+                            <span className="text-emerald-400/80">{Math.round(item.calculatedNutrition.carbs)}g C</span>
+                            {' · '}
+                            <span className="text-amber-400/80">{Math.round(item.calculatedNutrition.fat)}g F</span>
                           </div>
                         </div>
                         <button
@@ -241,7 +256,7 @@ export default function DietPlanPage() {
                           onClick={() =>
                             removePlanItem(activeDayData.day, meal.mealSlot as MealSlot, item.foodId, idx)
                           }
-                          className="ml-3 w-7 h-7 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          className="ml-3 w-7 h-7 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
                           title="Remove item"
                           aria-label={`Remove ${item.foodName}`}
                         >
@@ -254,7 +269,8 @@ export default function DietPlanPage() {
 
                 {/* Deviation note */}
                 {meal.deviationNote && (
-                  <div className="px-4 py-2 text-[11px] text-cyan-400/80 bg-cyan-500/5 border-t border-cyan-500/10">
+                  <div className="px-4 py-2 text-[11px] text-cyan-400/90 bg-cyan-500/5 border-t border-cyan-500/10 flex items-center gap-1.5 font-medium">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400/70" />
                     {meal.deviationNote}
                   </div>
                 )}

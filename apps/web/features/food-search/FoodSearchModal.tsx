@@ -22,6 +22,7 @@ import type { FoodItem, MealSlot } from '@thali/types';
 import { FOOD_DATASET } from '@thali/food-data';
 import { useNutritionStore } from '../../lib/store/useNutritionStore';
 import { db } from '../../lib/db/db';
+import { getApiBaseUrl } from '../../lib/identity/subscriberId';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Tab = 'recent' | 'results';
@@ -85,8 +86,11 @@ function scoreFood(food: FoodItem, q: string, cuisinePref?: string): number {
 export function FoodSearchModal() {
   const isOpen = useNutritionStore((s) => s.isSearchModalOpen);
   const activeMealSlot = useNutritionStore((s) => s.activeMealSlot);
+  const activePlanDay = useNutritionStore((s) => s.activePlanDay);
+  const searchContext = useNutritionStore((s) => s.searchContext);
   const closeFoodSearch = useNutritionStore((s) => s.closeFoodSearch);
   const logFood = useNutritionStore((s) => s.logFood);
+  const addPlanItem = useNutritionStore((s) => s.addPlanItem);
   const profile = useNutritionStore((s) => s.profile);
 
   // ── local state ──────────────────────────────────────────────────────────
@@ -106,7 +110,7 @@ export function FoodSearchModal() {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // ── Load foods & recents from Dexie on open ───────────────────────────────
+  // ── Load foods & recents from Dexie / API on open ────────────────────────
   useEffect(() => {
     if (!isOpen) return;
 
@@ -120,10 +124,22 @@ export function FoodSearchModal() {
     async function load() {
       setIsLoadingFoods(true);
       try {
-        // Food catalog
-        const count = await db.foods.count();
-        const foods = count > 0 ? await db.foods.toArray() : FOOD_DATASET;
-        setAllFoods(foods);
+        // Try fetching freshest catalog from backend (includes USDA + OFF items)
+        try {
+          const res = await fetch(`${getApiBaseUrl()}/api/foods/search`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.foods && Array.isArray(data.foods) && data.foods.length > 0) {
+              setAllFoods(data.foods);
+              await db.foods.bulkPut(data.foods);
+            }
+          }
+        } catch {
+          // Offline fallback: load from Dexie cache
+          const count = await db.foods.count();
+          const foods = count > 0 ? await db.foods.toArray() : FOOD_DATASET;
+          setAllFoods(foods);
+        }
 
         // Recent food IDs from past logs (last 30 distinct foods)
         const logs = await db.foodLogs.orderBy('createdAt').reverse().limit(200).toArray();
@@ -222,7 +238,11 @@ export function FoodSearchModal() {
     if (!selectedFood || quantity <= 0) return;
     setIsLogging(true);
     try {
-      await logFood(selectedFood, quantity, unit, activeMealSlot);
+      if (searchContext === 'plan') {
+        await addPlanItem(selectedFood, quantity, unit);
+      } else {
+        await logFood(selectedFood, quantity, unit, activeMealSlot);
+      }
       closeFoodSearch();
     } finally {
       setIsLogging(false);
@@ -257,18 +277,27 @@ export function FoodSearchModal() {
         className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
         role="dialog"
         aria-modal="true"
-        aria-label={`Log food to ${slotTitle}`}
+        aria-label={
+          searchContext === 'plan'
+            ? `Add food to ${slotTitle} plan (${activePlanDay})`
+            : `Log food to ${slotTitle}`
+        }
         onKeyDown={handleKeyDown}
       >
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-zinc-900/95 flex-shrink-0">
           <div>
             <h2 className="font-bold text-base text-zinc-100 tracking-tight">
-              Log to{' '}
+              {searchContext === 'plan' ? 'Add to ' : 'Log to '}
               <span className="text-cyan-400">{slotTitle}</span>
+              {searchContext === 'plan' && activePlanDay && (
+                <span className="text-zinc-400 text-sm font-normal"> · {activePlanDay}</span>
+              )}
             </h2>
             <p className="text-[11px] text-zinc-500 mt-0.5">
-              Bengali, Western, and packaged foods — one search
+              {searchContext === 'plan'
+                ? 'Swap or add any item from universal catalog — nutrition recalculates live'
+                : 'Bengali, Western, and packaged foods — one search'}
             </p>
           </div>
           <button
@@ -411,7 +440,7 @@ export function FoodSearchModal() {
               ))}
             </div>
 
-            {/* Log button */}
+            {/* Log / Add to plan button */}
             <button
               type="button"
               onClick={handleAddLog}
@@ -421,12 +450,16 @@ export function FoodSearchModal() {
               {isLogging ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Logging…</span>
+                  <span>{searchContext === 'plan' ? 'Adding to plan…' : 'Logging…'}</span>
                 </>
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  <span>Log {quantity}g to {slotTitle}</span>
+                  <span>
+                    {searchContext === 'plan'
+                      ? `Add ${quantity}g to ${slotTitle} Plan`
+                      : `Log ${quantity}g to ${slotTitle}`}
+                  </span>
                 </>
               )}
             </button>
