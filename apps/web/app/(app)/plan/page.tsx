@@ -1,29 +1,47 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, X, RefreshCw, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Plus, X, RefreshCw, Sparkles, Loader2, Utensils } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
+
+const SLOT_COLORS: Record<string, string> = {
+  breakfast: 'text-amber-400',
+  lunch: 'text-emerald-400',
+  dinner: 'text-purple-400',
+  snack: 'text-cyan-400',
+};
 
 export default function DietPlanPage() {
   const profile = useNutritionStore((s) => s.profile);
   const nutrition = useNutritionStore((s) => s.nutrition);
   const activePlan = useNutritionStore((s) => s.activePlan);
+  const isLoading = useNutritionStore((s) => s.isLoading);
+  const planError = useNutritionStore((s) => s.planError);
   const loadPlan = useNutritionStore((s) => s.loadPlan);
   const generatePlan = useNutritionStore((s) => s.generatePlan);
   const openPlanFoodSearch = useNutritionStore((s) => s.openPlanFoodSearch);
   const removePlanItem = useNutritionStore((s) => s.removePlanItem);
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [activeDay, setActiveDay] = useState<string | null>(null);
 
   useEffect(() => {
     loadPlan();
   }, [loadPlan]);
 
+  // Set first day as active once plan loads
+  useEffect(() => {
+    if (activePlan && !activeDay) {
+      setActiveDay(activePlan.days[0]?.day ?? null);
+    }
+  }, [activePlan, activeDay]);
+
   const handleRegenerate = async () => {
     setIsGenerating(true);
     try {
       await generatePlan();
+      setActiveDay(null);
     } finally {
       setIsGenerating(false);
     }
@@ -32,12 +50,12 @@ export default function DietPlanPage() {
   const goalDescriptions: Record<string, string> = {
     lose_weight: 'Weight loss — 500 kcal/day deficit',
     maintain: 'Weight maintenance — energy balance',
-    gain_weight: 'Weight gain — 300 kcal/day clean surplus',
-    build_muscle: 'Muscle building — 200 kcal/day surplus with 2.4g/kg protein',
+    gain_weight: 'Weight gain — 300 kcal/day surplus',
+    build_muscle: 'Muscle building — high protein surplus',
   };
 
   const goalText = profile?.goal
-    ? goalDescriptions[profile.goal] || profile.goal.replace('_', ' ')
+    ? (goalDescriptions[profile.goal] ?? profile.goal.replace('_', ' '))
     : 'Goal-Adaptive Nutrition Plan';
 
   const dailyCalorieTarget = nutrition?.calorieTarget
@@ -46,129 +64,239 @@ export default function DietPlanPage() {
       ? Math.round(activePlan.calorieTarget)
       : 2000;
 
+  const activeDayData = activePlan?.days.find(
+    (d) => d.day.toLowerCase() === activeDay?.toLowerCase(),
+  );
+
+  // Sticky day summary totals
+  const dayTotal = activeDayData
+    ? activeDayData.meals.reduce(
+        (acc, m) => ({
+          calories: acc.calories + m.subtotal.calories,
+          protein: acc.protein + m.subtotal.protein,
+          carbs: acc.carbs + m.subtotal.carbs,
+          fat: acc.fat + m.subtotal.fat,
+        }),
+        { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      )
+    : null;
+
   return (
-    <div className="space-y-6">
-      {/* Top Plain Summary Strip per Section 1.5 */}
-      <div className="bg-surface border border-border rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-5">
+      {/* ── Top Summary Strip ─────────────────────────────────────────────── */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-            7-Day Adaptive Meal Plan
+          <div className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5 mb-1">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            7-Day Adaptive Plan
           </div>
-          <div className="text-lg sm:text-xl font-serif font-bold text-primary mt-0.5">
+          <div className="text-base sm:text-lg font-bold text-zinc-100 tracking-tight">
             {goalText}
           </div>
-          <div className="text-xs text-muted mt-0.5">
-            Daily Target: <strong className="text-dark font-mono">{dailyCalorieTarget} kcal</strong> • Protein: <strong className="text-dark font-mono">{Math.round(nutrition?.macros.protein_g || 140)}g</strong> • Carbs: <strong className="text-dark font-mono">{Math.round(nutrition?.macros.carbs_g || 200)}g</strong> • Fat: <strong className="text-dark font-mono">{Math.round(nutrition?.macros.fat_g || 50)}g</strong>
+          <div className="flex flex-wrap gap-3 text-xs text-zinc-500 mt-1.5 font-tabular">
+            <span>
+              Target:{' '}
+              <strong className="text-cyan-400 font-semibold">{dailyCalorieTarget} kcal</strong>
+            </span>
+            <span>
+              P <strong className="text-purple-400">{Math.round(nutrition?.macros.protein_g ?? 140)}g</strong>
+            </span>
+            <span>
+              C <strong className="text-emerald-400">{Math.round(nutrition?.macros.carbs_g ?? 200)}g</strong>
+            </span>
+            <span>
+              F <strong className="text-amber-400">{Math.round(nutrition?.macros.fat_g ?? 50)}g</strong>
+            </span>
           </div>
         </div>
 
         <button
           type="button"
           onClick={handleRegenerate}
-          disabled={isGenerating}
-          className="px-4 py-2 bg-primary hover:bg-primary-hover text-surface rounded-lg text-xs font-medium transition shadow flex items-center space-x-1.5 self-start sm:self-auto disabled:opacity-50"
+          disabled={isGenerating || isLoading}
+          className="flex items-center space-x-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 min-h-[44px] self-start sm:self-auto"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
-          <span>{isGenerating ? 'Generating Plan...' : 'Regenerate Plan'}</span>
+          {isGenerating ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+          ) : (
+            <RefreshCw className="w-3.5 h-3.5 text-zinc-400" />
+          )}
+          <span>{isGenerating ? 'Generating…' : 'Regenerate Plan'}</span>
         </button>
       </div>
 
-      {/* 7-Column Layout per Section 1.5 */}
-      {!activePlan ? (
-        <div className="p-12 text-center text-muted text-sm bg-surface border border-border rounded-lg">
-          Loading 7-day adaptive diet plan...
+      {/* ── Error State ───────────────────────────────────────────────────── */}
+      {planError && (
+        <div className="bg-red-900/20 border border-red-800/40 rounded-xl p-4 text-sm text-red-300">
+          {planError}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3.5 overflow-x-auto pb-4">
-          {activePlan.days.map((day) => (
-            <div
-              key={day.day}
-              className="bg-surface border border-border rounded-lg flex flex-col min-w-[220px] shadow-xs"
-            >
-              {/* Day Header */}
-              <div className="bg-background/60 p-3 border-b border-border text-center">
-                <div className="font-serif font-bold text-sm text-primary">
-                  {day.day}
+      )}
+
+      {/* ── Loading State ─────────────────────────────────────────────────── */}
+      {(isLoading || isGenerating) && !activePlan && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mx-auto mb-3" />
+          <p className="text-sm text-zinc-400">Building your personalised plan…</p>
+        </div>
+      )}
+
+      {/* ── No Plan Empty State ───────────────────────────────────────────── */}
+      {!activePlan && !isLoading && !isGenerating && !planError && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center space-y-4">
+          <Utensils className="w-10 h-10 text-zinc-600 mx-auto" />
+          <div>
+            <p className="text-sm font-semibold text-zinc-400">No plan yet</p>
+            <p className="text-xs text-zinc-600 mt-1">
+              Complete onboarding first, then generate your first 7-day plan.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 rounded-xl text-sm font-bold transition-all min-h-[44px]"
+          >
+            Generate My Plan
+          </button>
+        </div>
+      )}
+
+      {/* ── Day Tabs ──────────────────────────────────────────────────────── */}
+      {activePlan && (
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {activePlan.days.map((d) => {
+            const isActive = d.day.toLowerCase() === activeDay?.toLowerCase();
+            const shortLabel = d.day.slice(0, 3); // Mon, Tue…
+            return (
+              <button
+                key={d.day}
+                type="button"
+                onClick={() => setActiveDay(d.day)}
+                className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                  isActive
+                    ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                }`}
+              >
+                {shortLabel}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Active Day: Meal Cards ─────────────────────────────────────────── */}
+      {activeDayData && (
+        <div className="space-y-4">
+          {activeDayData.meals.map((meal) => {
+            const slotLabel =
+              meal.mealSlot.charAt(0).toUpperCase() + meal.mealSlot.slice(1);
+            const color = SLOT_COLORS[meal.mealSlot] ?? 'text-zinc-400';
+
+            return (
+              <div
+                key={meal.mealSlot}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden"
+              >
+                {/* Meal header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/60">
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold text-sm ${color}`}>{slotLabel}</span>
+                    {meal.isCustomized && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                        Edited
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs font-tabular font-semibold text-zinc-400">
+                    {Math.round(meal.subtotal.calories)}{' '}
+                    <span className="text-zinc-600 font-normal">kcal</span>
+                    {' · '}
+                    <span className="text-purple-400">{Math.round(meal.subtotal.protein)}g P</span>
+                  </span>
+                </div>
+
+                {/* Food items */}
+                <ul className="divide-y divide-zinc-800/60">
+                  {meal.items.length === 0 ? (
+                    <li className="px-4 py-3 text-xs text-zinc-600 italic">
+                      No items — use Add item below.
+                    </li>
+                  ) : (
+                    meal.items.map((item, idx) => (
+                      <li
+                        key={`${item.foodId}_${idx}`}
+                        className="group flex items-center justify-between px-4 py-2.5 hover:bg-zinc-800/40 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-zinc-200 font-medium truncate">
+                            {item.foodName}
+                          </div>
+                          <div className="text-[11px] text-zinc-500 font-tabular">
+                            {item.quantity} {item.unit} ·{' '}
+                            <span className="text-zinc-400">{Math.round(item.calculatedNutrition.calories)} kcal</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removePlanItem(activeDayData.day, meal.mealSlot as MealSlot, item.foodId, idx)
+                          }
+                          className="ml-3 w-7 h-7 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          title="Remove item"
+                          aria-label={`Remove ${item.foodName}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+
+                {/* Deviation note */}
+                {meal.deviationNote && (
+                  <div className="px-4 py-2 text-[11px] text-cyan-400/80 bg-cyan-500/5 border-t border-cyan-500/10">
+                    {meal.deviationNote}
+                  </div>
+                )}
+
+                {/* Add item */}
+                <div className="px-4 py-3 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => openPlanFoodSearch(activeDayData.day, meal.mealSlot as MealSlot)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors min-h-[36px]"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add item
+                  </button>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {/* Meals List */}
-              <div className="p-3 space-y-4 flex-1">
-                {day.meals.map((meal) => {
-                  const slotLabel = meal.mealSlot.charAt(0).toUpperCase() + meal.mealSlot.slice(1);
-                  return (
-                    <div key={meal.mealSlot} className="space-y-1.5">
-                      {/* Meal Header & Subtotal */}
-                      <div className="flex items-center justify-between text-xs pb-1 border-b border-border/40">
-                        <span className="font-semibold text-dark">{slotLabel}</span>
-                        <span className="font-mono text-muted text-[11px]">
-                          {Math.round(meal.subtotal.calories)} kcal
-                        </span>
-                      </div>
-
-                      {/* Items list with hover remove */}
-                      {meal.items.length === 0 ? (
-                        <div className="text-[11px] text-muted/70 italic py-1">
-                          No items in this meal.
-                        </div>
-                      ) : (
-                        <ul className="space-y-1">
-                          {meal.items.map((item, idx) => (
-                            <li
-                              key={`${item.foodId}_${idx}`}
-                              className="group text-xs text-dark/90 flex items-start justify-between py-0.5 hover:bg-background/40 px-1 rounded transition"
-                            >
-                              <div className="pr-1 flex-1">
-                                <span className="font-normal">{item.foodName}</span>
-                                <span className="text-[10px] text-muted block">
-                                  {item.quantity} {item.unit} • {Math.round(item.calculatedNutrition.calories)} kcal
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removePlanItem(day.day, meal.mealSlot, item.foodId, idx)}
-                                className="text-muted hover:text-warning opacity-0 group-hover:opacity-100 transition p-0.5 rounded"
-                                title="Remove item"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      {/* Informal Deviation Note (if customized) */}
-                      {meal.deviationNote && (
-                        <div className="text-[10px] text-secondary font-medium bg-secondary-light/40 px-1.5 py-0.5 rounded">
-                          {meal.deviationNote}
-                        </div>
-                      )}
-
-                      {/* + Add item link */}
-                      <button
-                        type="button"
-                        onClick={() => openPlanFoodSearch(day.day, meal.mealSlot)}
-                        className="text-[11px] text-primary hover:text-primary-hover font-medium flex items-center space-x-0.5 transition pt-0.5"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>Add item</span>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Day Total at Bottom */}
-              <div className="bg-background/40 p-2.5 border-t border-border mt-auto flex items-center justify-between text-xs">
-                <span className="font-semibold text-muted text-[11px] uppercase tracking-wider">
-                  Day Total
-                </span>
-                <span className="font-mono font-bold text-primary">
-                  {Math.round(day.totals.calories)} kcal
-                </span>
-              </div>
-            </div>
-          ))}
+      {/* ── Sticky Day Summary ─────────────────────────────────────────────── */}
+      {dayTotal && activePlan && (
+        <div className="bg-zinc-900/95 border border-zinc-800 rounded-2xl p-4 flex flex-wrap gap-4 items-center justify-between sticky bottom-4">
+          <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+            {activeDay} Total
+          </span>
+          <div className="flex gap-4 font-tabular text-xs">
+            <span className="font-bold text-zinc-100">
+              {Math.round(dayTotal.calories)}{' '}
+              <span className="font-normal text-zinc-500">kcal</span>
+            </span>
+            <span>
+              P <strong className="text-purple-400">{Math.round(dayTotal.protein)}g</strong>
+            </span>
+            <span>
+              C <strong className="text-emerald-400">{Math.round(dayTotal.carbs)}g</strong>
+            </span>
+            <span>
+              F <strong className="text-amber-400">{Math.round(dayTotal.fat)}g</strong>
+            </span>
+          </div>
         </div>
       )}
     </div>

@@ -54,7 +54,7 @@ function WeightTrendChart({
 
   if (logs.length === 0) {
     return (
-      <div className="flex items-center justify-center h-40 text-xs text-muted">
+      <div className="flex items-center justify-center h-40 text-xs text-zinc-500">
         No weight entries yet — log your first weight below.
       </div>
     );
@@ -75,7 +75,7 @@ function WeightTrendChart({
             x2={W - PAD.right}
             y1={toY(v)}
             y2={toY(v)}
-            stroke="#DFD7C2"
+            stroke="#3f3f46"
             strokeDasharray="4 4"
             strokeWidth={1}
           />
@@ -84,7 +84,7 @@ function WeightTrendChart({
             y={toY(v) + 4}
             textAnchor="end"
             fontSize={9}
-            fill="#635F54"
+            fill="#71717a"
           >
             {v}
           </text>
@@ -97,7 +97,7 @@ function WeightTrendChart({
         x2={W - PAD.right}
         y1={targetY}
         y2={targetY}
-        stroke="#C98A2C"
+        stroke="#22d3ee"
         strokeDasharray="6 3"
         strokeWidth={1.5}
       />
@@ -105,7 +105,7 @@ function WeightTrendChart({
         x={W - PAD.right + 2}
         y={targetY + 4}
         fontSize={8}
-        fill="#C98A2C"
+        fill="#22d3ee"
         fontWeight="600"
       >
         Goal
@@ -115,7 +115,7 @@ function WeightTrendChart({
       <polyline
         points={polyline}
         fill="none"
-        stroke="#1F4D3E"
+        stroke="#c084fc"
         strokeWidth={2}
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -128,8 +128,8 @@ function WeightTrendChart({
           cx={toX(i)}
           cy={toY(l.weight_kg)}
           r={3.5}
-          fill="#1F4D3E"
-          stroke="#FFFDF9"
+          fill="#c084fc"
+          stroke="#09090b"
           strokeWidth={1.5}
         />
       ))}
@@ -144,7 +144,7 @@ function WeightTrendChart({
             y={H - 4}
             textAnchor="middle"
             fontSize={8}
-            fill="#635F54"
+            fill="#71717a"
           >
             {logs[i].loggedOn.slice(5)}
           </text>
@@ -169,18 +169,18 @@ function MacroBar({
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <span className="text-muted">{label}</span>
-        <span className="font-mono font-bold text-dark">
+        <span className="text-zinc-500">{label}</span>
+        <span className="font-tabular font-bold text-zinc-200">
           {Math.round(current)}g / {Math.round(target)}g
         </span>
       </div>
-      <div className="h-2 bg-border rounded-full overflow-hidden">
+      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
-      <div className="text-right text-[10px] text-muted">{pct}% of target</div>
+      <div className="text-right text-[10px] text-zinc-600">{pct}% of target</div>
     </div>
   );
 }
@@ -205,17 +205,17 @@ function QuickLogModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-dark/40 backdrop-blur-sm">
-      <div className="bg-surface border border-border rounded-xl shadow-2xl w-full max-w-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-sm">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div className="flex items-center space-x-2">
-            <Scale className="w-4 h-4 text-primary" />
-            <h2 className="font-serif font-bold text-base text-primary">Log Today's Weight</h2>
+            <Scale className="w-4 h-4 text-cyan-400" />
+            <h2 className="font-bold text-base text-zinc-100">Log Weight</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-background text-muted transition"
+            className="w-8 h-8 rounded-lg hover:bg-zinc-800 text-zinc-400 flex items-center justify-center transition"
           >
             <X className="w-4 h-4" />
           </button>
@@ -224,7 +224,7 @@ function QuickLogModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-dark block">Weight (kg)</label>
+            <label className="text-xs font-semibold text-zinc-400 block">Weight (kg)</label>
             <input
               type="number"
               step="0.1"
@@ -234,23 +234,23 @@ function QuickLogModal({
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               autoFocus
-              className="w-full px-3 py-2.5 border border-border rounded-lg bg-background text-sm text-dark focus:outline-none focus:border-primary text-center text-xl font-mono font-bold"
+              className="w-full px-3 py-2.5 border border-zinc-700 rounded-xl bg-zinc-800 text-zinc-100 text-sm focus:outline-none focus:border-cyan-500 text-center text-xl font-tabular font-bold"
               required
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-dark block">Date</label>
+            <label className="text-xs font-semibold text-zinc-400 block">Date</label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm text-dark focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 border border-zinc-700 rounded-xl bg-zinc-800 text-zinc-100 text-sm focus:outline-none focus:border-cyan-500"
             />
           </div>
           <button
             type="submit"
             disabled={!weight}
-            className="w-full py-2.5 bg-primary hover:bg-primary-hover text-surface rounded-lg text-sm font-semibold transition shadow disabled:opacity-50 flex items-center justify-center space-x-2"
+            className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 rounded-xl text-sm font-bold transition disabled:opacity-50 flex items-center justify-center space-x-2 min-h-[44px]"
           >
             <Plus className="w-4 h-4" />
             <span>Log Weight</span>
@@ -373,18 +373,18 @@ export default function ProgressPage() {
       )}
 
       {/* Page Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-border">
+      <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
         <div>
-          <h1 className="font-serif font-bold text-2xl sm:text-3xl text-primary">
-            Progress & Consistency
+          <h1 className="font-bold text-2xl sm:text-3xl text-zinc-100 tracking-tight">
+            Progress
           </h1>
-          <p className="text-xs text-muted mt-1">
+          <p className="text-xs text-zinc-500 mt-1">
             Weight trend, habit adherence, and macro compliance at a glance.
           </p>
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center space-x-1.5 px-4 py-2 bg-primary hover:bg-primary-hover text-surface text-sm font-semibold rounded-lg transition shadow"
+          className="flex items-center space-x-1.5 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-sm font-bold rounded-xl transition min-h-[44px]"
         >
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">Log Weight</span>
@@ -394,24 +394,24 @@ export default function ProgressPage() {
       {/* Scorecard Row */}
       <div className="grid grid-cols-3 gap-3">
         {/* Streak */}
-        <div className="bg-surface border border-border rounded-lg p-4 text-center">
-          <Flame className="w-5 h-5 text-accent mx-auto mb-1" />
-          <div className="text-2xl font-serif font-bold text-dark">{streak}</div>
-          <div className="text-[11px] text-muted mt-0.5">Day Streak</div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-center">
+          <Flame className="w-5 h-5 text-amber-400 mx-auto mb-1" />
+          <div className="text-2xl font-bold font-tabular text-zinc-100">{streak}</div>
+          <div className="text-[11px] text-zinc-500 mt-0.5">Day Streak</div>
         </div>
         {/* Caloric accuracy */}
-        <div className="bg-surface border border-border rounded-lg p-4 text-center">
-          <Target className="w-5 h-5 text-primary mx-auto mb-1" />
-          <div className="text-2xl font-serif font-bold text-dark">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-center">
+          <Target className="w-5 h-5 text-cyan-400 mx-auto mb-1" />
+          <div className="text-2xl font-bold font-tabular text-zinc-100">
             {caloricAccuracy !== null ? `${caloricAccuracy}%` : '—'}
           </div>
-          <div className="text-[11px] text-muted mt-0.5">Calorie Goal</div>
+          <div className="text-[11px] text-zinc-500 mt-0.5">Calorie Goal</div>
         </div>
         {/* Weekly adherence */}
-        <div className="bg-surface border border-border rounded-lg p-4 text-center">
-          <BarChart2 className="w-5 h-5 text-secondary mx-auto mb-1" />
-          <div className="text-2xl font-serif font-bold text-dark">{adherencePercent}%</div>
-          <div className="text-[11px] text-muted mt-0.5">Weekly Log Rate</div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-center">
+          <BarChart2 className="w-5 h-5 text-purple-400 mx-auto mb-1" />
+          <div className="text-2xl font-bold font-tabular text-zinc-100">{adherencePercent}%</div>
+          <div className="text-[11px] text-zinc-500 mt-0.5">Weekly Log Rate</div>
         </div>
       </div>
 
@@ -419,32 +419,32 @@ export default function ProgressPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT: Weight Trend */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-surface border border-border rounded-lg p-5">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-serif font-bold text-lg text-primary flex items-center space-x-2">
-                <Scale className="w-4 h-4 text-accent" />
+              <h2 className="font-bold text-base text-zinc-100 flex items-center space-x-2">
+                <Scale className="w-4 h-4 text-cyan-400" />
                 <span>Body Weight Trend</span>
               </h2>
-              <span className="text-xs font-mono bg-accent-light text-accent px-2 py-0.5 rounded">
+              <span className="text-xs font-tabular bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded-lg">
                 Goal: {targetWeight} kg
               </span>
             </div>
 
             {/* Metric cards */}
             <div className="grid grid-cols-3 gap-2 mb-4">
-              <div className="bg-background border border-border p-3 rounded-lg text-center">
-                <div className="text-[10px] uppercase font-bold text-muted">Starting</div>
-                <div className="text-base font-serif font-bold text-dark mt-0.5">{startingWeight} kg</div>
+              <div className="bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-center">
+                <div className="text-[10px] uppercase font-bold text-zinc-500">Starting</div>
+                <div className="text-base font-bold font-tabular text-zinc-200 mt-0.5">{startingWeight} kg</div>
               </div>
-              <div className="bg-background border border-border p-3 rounded-lg text-center">
-                <div className="text-[10px] uppercase font-bold text-muted">Current</div>
-                <div className="text-base font-serif font-bold text-primary mt-0.5">{currentWeight} kg</div>
+              <div className="bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-center">
+                <div className="text-[10px] uppercase font-bold text-zinc-500">Current</div>
+                <div className="text-base font-bold font-tabular text-cyan-400 mt-0.5">{currentWeight} kg</div>
               </div>
-              <div className="bg-background border border-border p-3 rounded-lg text-center">
-                <div className="text-[10px] uppercase font-bold text-muted">Change</div>
+              <div className="bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-center">
+                <div className="text-[10px] uppercase font-bold text-zinc-500">Change</div>
                 <div
-                  className={`text-base font-serif font-bold mt-0.5 flex items-center justify-center space-x-0.5 ${
-                    weightDelta < 0 ? 'text-primary' : weightDelta > 0 ? 'text-warning' : 'text-dark'
+                  className={`text-base font-bold font-tabular mt-0.5 flex items-center justify-center space-x-0.5 ${
+                    weightDelta < 0 ? 'text-emerald-400' : weightDelta > 0 ? 'text-red-400' : 'text-zinc-400'
                   }`}
                 >
                   {weightDelta < 0 ? (
@@ -460,26 +460,26 @@ export default function ProgressPage() {
             </div>
 
             {/* SVG Chart */}
-            <div className="bg-background border border-border rounded-lg p-3 overflow-hidden">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 overflow-hidden">
               <WeightTrendChart logs={weightLogs} targetWeight={targetWeight} />
             </div>
 
             {/* History table */}
             <div className="mt-4 space-y-1">
-              <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
+              <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
                 Entry History
               </div>
-              <ul className="divide-y divide-border/40 text-xs max-h-40 overflow-y-auto">
+              <ul className="divide-y divide-zinc-800/60 text-xs max-h-40 overflow-y-auto">
                 {weightLogs
                   .slice()
                   .reverse()
                   .map((log) => (
-                    <li key={log.id} className="py-2 flex items-center justify-between text-dark">
+                    <li key={log.id} className="py-2 flex items-center justify-between text-zinc-300">
                       <div className="flex items-center space-x-2">
-                        <Calendar className="w-3.5 h-3.5 text-muted" />
-                        <span>{log.loggedOn}</span>
+                        <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+                        <span className="font-tabular">{log.loggedOn}</span>
                       </div>
-                      <span className="font-mono font-bold text-primary">{log.weight_kg} kg</span>
+                      <span className="font-tabular font-bold text-cyan-400">{log.weight_kg} kg</span>
                     </li>
                   ))}
               </ul>
@@ -490,43 +490,43 @@ export default function ProgressPage() {
         {/* RIGHT: Habit + Macro Scorecard */}
         <div className="lg:col-span-5 space-y-4">
           {/* 7-day tracker */}
-          <div className="bg-surface border border-border rounded-lg p-5">
-            <h2 className="font-serif font-bold text-base text-primary mb-3">
-              Weekly Target Adherence
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+            <h2 className="font-bold text-sm text-zinc-100 mb-3 uppercase tracking-wider">
+              Weekly Adherence
             </h2>
             <div className="grid grid-cols-7 gap-1.5 text-center mb-3">
               {weeklyDays.map((day) => (
                 <div key={day.date} className="flex flex-col items-center space-y-1.5">
-                  <span className="text-[10px] text-muted font-medium">{day.label}</span>
+                  <span className="text-[10px] text-zinc-500 font-medium">{day.label}</span>
                   <div
                     className={`w-7 h-7 rounded-full flex items-center justify-center border transition ${
                       day.isLogged
-                        ? 'bg-primary text-surface border-primary'
-                        : 'bg-surface border-border text-muted/40'
+                        ? 'bg-emerald-500/15 border-emerald-500/40'
+                        : 'bg-zinc-800 border-zinc-700'
                     }`}
                   >
                     {day.isLogged ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                     ) : (
-                      <Circle className="w-3.5 h-3.5" />
+                      <Circle className="w-3.5 h-3.5 text-zinc-700" />
                     )}
                   </div>
-                  <span className="text-[9px] text-muted">{day.date.slice(8)}</span>
+                  <span className="text-[9px] text-zinc-600">{day.date.slice(8)}</span>
                 </div>
               ))}
             </div>
-            <div className="text-xs text-muted text-center">
+            <div className="text-xs text-zinc-500 text-center">
               {loggedDaysCount} / 7 days logged this week
             </div>
           </div>
 
           {/* Macro compliance */}
-          <div className="bg-surface border border-border rounded-lg p-5 space-y-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
             <div>
-              <h2 className="font-serif font-bold text-base text-primary">
-                Today's Macro Compliance
+              <h2 className="font-bold text-sm text-zinc-100">
+                Today&apos;s Macro Compliance
               </h2>
-              <p className="text-xs text-muted mt-0.5">
+              <p className="text-xs text-zinc-500 mt-0.5">
                 {dailyLogs.length === 0 ? 'No food logged today yet.' : `Based on ${dailyLogs.length} food entries.`}
               </p>
             </div>
@@ -534,23 +534,23 @@ export default function ProgressPage() {
               label="Protein"
               current={consumedToday.protein}
               target={nutrition?.macros.protein_g ?? 140}
-              color="#1F4D3E"
+              color="#c084fc"
             />
             <MacroBar
               label="Carbohydrates"
               current={consumedToday.carbs}
               target={nutrition?.macros.carbs_g ?? 200}
-              color="#C98A2C"
+              color="#34d399"
             />
             <MacroBar
               label="Fat"
               current={consumedToday.fat}
               target={nutrition?.macros.fat_g ?? 55}
-              color="#5A3E85"
+              color="#fbbf24"
             />
-            <div className="pt-2 border-t border-border/50 flex justify-between text-xs">
-              <span className="text-muted">Calories consumed</span>
-              <span className="font-mono font-bold text-primary">
+            <div className="pt-2 border-t border-zinc-800/60 flex justify-between text-xs">
+              <span className="text-zinc-500">Calories consumed</span>
+              <span className="font-tabular font-bold text-cyan-400">
                 {Math.round(consumedToday.calories)} / {Math.round(nutrition?.calorieTarget ?? 2000)} kcal
               </span>
             </div>
