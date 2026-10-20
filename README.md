@@ -239,6 +239,20 @@ cp apps/api/.env.example apps/api/.env
 ```
 *(If no Postgres instance is set, the API automatically falls back to in-memory mode for development and testing).*
 
+```bash
+# Apply database migrations
+pnpm db:migrate
+
+# Seed baseline Bengali foods (source = SEED)
+pnpm db:seed
+
+# Expand food catalog with curated USDA & Open Food Facts subsets (idempotent dedupe)
+pnpm db:import
+
+# Or run import in dry-run mode (simulation without DB writes)
+pnpm db:import --dry-run
+```
+
 ### 3. Run Development Servers
 ```bash
 # Starts both Next.js Web (port 3000) and Fastify API (port 3001) concurrently

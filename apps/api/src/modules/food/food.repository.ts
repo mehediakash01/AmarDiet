@@ -10,6 +10,16 @@ export interface IFoodRepository {
   upsert(food: FoodItem): Promise<FoodItem>;
 }
 
+function normalizeSource(source?: string): 'SEED' | 'USDA' | 'OPEN_FOOD_FACTS' | 'USER' {
+  if (!source) return 'SEED';
+  if (source === 'SEED' || source === 'USDA' || source === 'OPEN_FOOD_FACTS' || source === 'USER') {
+    return source;
+  }
+  if (source.toLowerCase().includes('usda')) return 'USDA';
+  if (source.toLowerCase().includes('open food facts')) return 'OPEN_FOOD_FACTS';
+  return 'SEED';
+}
+
 function rowToFoodItem(row: FoodRow): FoodItem {
   return {
     id: row.id,
@@ -24,9 +34,11 @@ function rowToFoodItem(row: FoodRow): FoodItem {
     fatPer100g: row.fatPer100g,
     fiberPer100g: row.fiberPer100g,
     commonServings: (row.commonServings as FoodItem['commonServings']) ?? [],
-    source: row.source ?? undefined,
+    source: row.source,
     sourceVersion: row.sourceVersion ?? undefined,
     verifiedAt: row.verifiedAt ?? undefined,
+    isVerified: row.isVerified ?? false,
+    barcode: row.barcode ?? null,
   };
 }
 
@@ -51,6 +63,7 @@ export class DrizzleFoodRepository implements IFoodRepository {
 
   async upsert(food: FoodItem): Promise<FoodItem> {
     const now = new Date();
+    const source = normalizeSource(food.source);
     const [row] = await this.db
       .insert(foods)
       .values({
@@ -66,9 +79,11 @@ export class DrizzleFoodRepository implements IFoodRepository {
         fatPer100g: food.fatPer100g,
         fiberPer100g: food.fiberPer100g,
         commonServings: food.commonServings,
-        source: food.source,
+        source,
         sourceVersion: food.sourceVersion,
         verifiedAt: food.verifiedAt,
+        isVerified: food.isVerified ?? false,
+        barcode: food.barcode ?? null,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -85,9 +100,11 @@ export class DrizzleFoodRepository implements IFoodRepository {
           fatPer100g: food.fatPer100g,
           fiberPer100g: food.fiberPer100g,
           commonServings: food.commonServings,
-          source: food.source,
+          source,
           sourceVersion: food.sourceVersion,
           verifiedAt: food.verifiedAt,
+          isVerified: food.isVerified ?? false,
+          barcode: food.barcode ?? null,
           updatedAt: now,
         },
       })

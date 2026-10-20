@@ -32,13 +32,15 @@ async function main() {
         INSERT INTO foods (
           id, canonical_name, local_names, aliases, cuisine_tags, category,
           calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g,
-          fiber_per_100g, common_servings, source, source_version, verified_at
+          fiber_per_100g, common_servings, source, source_version, verified_at,
+          is_verified, barcode
         ) VALUES (
           ${food.id}, ${food.canonicalName}, ${sql.json(food.localNames as unknown as postgres.JSONValue)},
           ${sql.json(food.aliases as unknown as postgres.JSONValue)}, ${sql.json(food.cuisineTags as unknown as postgres.JSONValue)}, ${food.category},
           ${food.caloriesPer100g}, ${food.proteinPer100g}, ${food.carbsPer100g},
           ${food.fatPer100g}, ${food.fiberPer100g}, ${sql.json(food.commonServings as unknown as postgres.JSONValue)},
-          ${food.source ?? null}, ${food.sourceVersion ?? null}, ${food.verifiedAt ?? null}
+          'SEED', ${food.sourceVersion ?? null}, ${food.verifiedAt ?? null},
+          ${food.isVerified ?? true}, ${food.barcode ?? null}
         )
         ON CONFLICT (id) DO UPDATE SET
           canonical_name = EXCLUDED.canonical_name,
@@ -52,9 +54,11 @@ async function main() {
           fat_per_100g = EXCLUDED.fat_per_100g,
           fiber_per_100g = EXCLUDED.fiber_per_100g,
           common_servings = EXCLUDED.common_servings,
-          source = EXCLUDED.source,
+          source = 'SEED',
           source_version = EXCLUDED.source_version,
           verified_at = EXCLUDED.verified_at,
+          is_verified = true,
+          barcode = EXCLUDED.barcode,
           updated_at = now()
       `;
       count++;

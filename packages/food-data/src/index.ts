@@ -2,6 +2,8 @@ import type { FoodItem } from '@thali/types';
 import { FOOD_DATASET } from './foods.js';
 
 export { FOOD_DATASET } from './foods.js';
+export { USDA_FOOD_DATASET } from './curated/usda-foods.js';
+export { OFF_FOOD_DATASET } from './curated/off-foods.js';
 export type { FoodItem, CommonServing } from '@thali/types';
 
 /**

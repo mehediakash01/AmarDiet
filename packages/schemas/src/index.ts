@@ -5,6 +5,9 @@ export const CommonServingSchema = z.object({
   grams: z.number().positive('Serving grams must be positive'),
 });
 
+export const FoodSourceSchema = z.enum(['SEED', 'USDA', 'OPEN_FOOD_FACTS', 'USER']);
+export type FoodSource = z.infer<typeof FoodSourceSchema>;
+
 export const FoodItemSchema = z.object({
   id: z.string().min(1, 'Food ID is required'),
   canonicalName: z.string().min(1, 'Canonical name is required'),
@@ -18,9 +21,11 @@ export const FoodItemSchema = z.object({
   fatPer100g: z.number().nonnegative('Fat per 100g must be non-negative'),
   fiberPer100g: z.number().nonnegative('Fiber per 100g must be non-negative'),
   commonServings: z.array(CommonServingSchema).min(1, 'At least one common serving required'),
-  source: z.string().optional(),
+  source: FoodSourceSchema.or(z.string()).optional().default('SEED'),
   sourceVersion: z.string().optional(),
   verifiedAt: z.string().optional(),
+  isVerified: z.boolean().optional().default(false),
+  barcode: z.string().nullable().optional(),
 });
 
 export type FoodItemInput = z.infer<typeof FoodItemSchema>;
@@ -239,9 +244,11 @@ export const AdminCreateFoodSchema = z.object({
   fatPer100g: z.number().nonnegative('fatPer100g must be >= 0'),
   fiberPer100g: z.number().nonnegative('fiberPer100g must be >= 0').default(0),
   commonServings: z.array(CommonServingSchema).min(1, 'At least one serving required'),
-  source: z.string().optional(),
+  source: FoodSourceSchema.or(z.string()).optional().default('USER'),
   sourceVersion: z.string().optional(),
   verifiedAt: z.string().optional(),
+  isVerified: z.boolean().optional().default(false),
+  barcode: z.string().nullable().optional(),
 });
 
 export const AdminPatchFoodSchema = AdminCreateFoodSchema.partial().omit({ id: true });

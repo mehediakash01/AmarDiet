@@ -8,6 +8,8 @@ export interface CommonServing {
   grams: number;
 }
 
+export type FoodSource = 'SEED' | 'USDA' | 'OPEN_FOOD_FACTS' | 'USER';
+
 export interface FoodItem {
   id: string;
   canonicalName: string;
@@ -21,9 +23,11 @@ export interface FoodItem {
   fatPer100g: number;
   fiberPer100g: number;
   commonServings: CommonServing[];
-  source?: string;
+  source?: FoodSource | string;
   sourceVersion?: string;
   verifiedAt?: string;
+  isVerified?: boolean;
+  barcode?: string | null;
 }
 
 export type ActivityLevel =

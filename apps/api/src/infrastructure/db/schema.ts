@@ -5,7 +5,18 @@ import {
   doublePrecision,
   jsonb,
   timestamp,
+  boolean,
+  pgEnum,
+  index,
 } from 'drizzle-orm/pg-core';
+
+export const foodSourceEnum = pgEnum('food_source', [
+  'SEED',
+  'USDA',
+  'OPEN_FOOD_FACTS',
+  'USER',
+]);
+export type FoodSource = (typeof foodSourceEnum.enumValues)[number];
 
 /**
  * Subscribers table — identity & subscription record
@@ -114,25 +125,36 @@ export type NewWeightLogRow = typeof weightLogs.$inferInsert;
  * real source of truth; the static dataset is now just the seed data used
  * to populate it once.
  */
-export const foods = pgTable('foods', {
-  id: varchar('id', { length: 64 }).primaryKey(),
-  canonicalName: varchar('canonical_name', { length: 256 }).notNull(),
-  localNames: jsonb('local_names').notNull().default([]),
-  aliases: jsonb('aliases').notNull().default([]),
-  cuisineTags: jsonb('cuisine_tags').notNull().default([]),
-  category: varchar('category', { length: 64 }).notNull(),
-  caloriesPer100g: doublePrecision('calories_per_100g').notNull(),
-  proteinPer100g: doublePrecision('protein_per_100g').notNull(),
-  carbsPer100g: doublePrecision('carbs_per_100g').notNull(),
-  fatPer100g: doublePrecision('fat_per_100g').notNull(),
-  fiberPer100g: doublePrecision('fiber_per_100g').notNull().default(0),
-  commonServings: jsonb('common_servings').notNull().default([]),
-  source: varchar('source', { length: 128 }),
-  sourceVersion: varchar('source_version', { length: 32 }),
-  verifiedAt: varchar('verified_at', { length: 32 }),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+export const foods = pgTable(
+  'foods',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    canonicalName: varchar('canonical_name', { length: 256 }).notNull(),
+    localNames: jsonb('local_names').notNull().default([]),
+    aliases: jsonb('aliases').notNull().default([]),
+    cuisineTags: jsonb('cuisine_tags').notNull().default([]),
+    category: varchar('category', { length: 64 }).notNull(),
+    caloriesPer100g: doublePrecision('calories_per_100g').notNull(),
+    proteinPer100g: doublePrecision('protein_per_100g').notNull(),
+    carbsPer100g: doublePrecision('carbs_per_100g').notNull(),
+    fatPer100g: doublePrecision('fat_per_100g').notNull(),
+    fiberPer100g: doublePrecision('fiber_per_100g').notNull().default(0),
+    commonServings: jsonb('common_servings').notNull().default([]),
+    source: foodSourceEnum('source').default('SEED').notNull(),
+    sourceVersion: varchar('source_version', { length: 32 }),
+    verifiedAt: varchar('verified_at', { length: 32 }),
+    isVerified: boolean('is_verified').default(false).notNull(),
+    barcode: varchar('barcode', { length: 64 }).unique(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    canonicalNameIdx: index('foods_canonical_name_idx').on(table.canonicalName),
+    sourceIdx: index('foods_source_idx').on(table.source),
+    isVerifiedIdx: index('foods_is_verified_idx').on(table.isVerified),
+    barcodeIdx: index('foods_barcode_idx').on(table.barcode),
+  }),
+);
 
 export type FoodRow = typeof foods.$inferSelect;
 export type NewFoodRow = typeof foods.$inferInsert;

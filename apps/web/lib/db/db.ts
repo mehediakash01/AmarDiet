@@ -37,6 +37,10 @@ export class ThaliDexieDatabase extends Dexie {
       syncQueue: 'id, entity, action, status, timestamp',
     });
 
+    this.version(2).stores({
+      foods: 'id, canonicalName, category, *cuisineTags, *localNames, *aliases, source, isVerified, barcode',
+    });
+
     this.on('populate', () => {
       this.foods.bulkAdd(FOOD_DATASET);
     });
