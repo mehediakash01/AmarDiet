@@ -181,4 +181,28 @@ export const mealScanEvents = pgTable('meal_scan_events', {
 export type MealScanEventRow = typeof mealScanEvents.$inferSelect;
 export type NewMealScanEventRow = typeof mealScanEvents.$inferInsert;
 
+/**
+ * Webhook Events table — records all incoming carrier/third-party callbacks (Bdapps)
+ * uniquely by event_id to ensure strict idempotent processing.
+ */
+export const webhookEvents = pgTable(
+  'webhook_events',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    eventId: varchar('event_id', { length: 128 }).notNull().unique(),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    processedAt: timestamp('processed_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    eventIdIdx: index('webhook_events_event_id_idx').on(table.eventId),
+    providerIdx: index('webhook_events_provider_idx').on(table.provider),
+  }),
+);
+
+export type WebhookEventRow = typeof webhookEvents.$inferSelect;
+export type NewWebhookEventRow = typeof webhookEvents.$inferInsert;
+
+
 

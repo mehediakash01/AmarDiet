@@ -56,6 +56,32 @@ export interface Subscriber {
   updatedAt: string;
 }
 
+export type BdappsEventStatus =
+  | 'REGISTER'
+  | 'UNREGISTER'
+  | 'RENEW'
+  | 'CHARGE_SUCCESS'
+  | 'CHARGE_FAILURE';
+
+export interface BdappsWebhookPayload {
+  version?: string;
+  applicationId: string;
+  subscriberId: string;
+  status: BdappsEventStatus;
+  frequency?: string;
+  timeStamp?: string;
+  eventId: string;
+}
+
+export interface WebhookEventRecord {
+  id: string;
+  eventId: string;
+  provider: string;
+  payload: Record<string, unknown>;
+  processedAt: string;
+  createdAt: string;
+}
+
 export interface UserProfile {
   subscriberId: string;
   age: number;

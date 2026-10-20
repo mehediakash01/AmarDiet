@@ -8,6 +8,7 @@ import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { PlateRingChart } from '@/components/PlateRingChart';
 import { BmiSpectrumChart } from '@/components/BmiSpectrumChart';
 import { MealSlotCard } from '@/components/MealSlotCard';
+import { SubscriptionCard } from '@/components/SubscriptionCard';
 import { useToast } from '@/components/ui/Toast';
 
 export default function DashboardPage() {
@@ -123,6 +124,8 @@ export default function DashboardPage() {
               </div>
             </>
           )}
+
+          <SubscriptionCard />
         </div>
 
         {/* LEFT COLUMN on desktop / SECOND on mobile: 4 Meal Slot Cards */}

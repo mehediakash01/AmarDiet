@@ -48,6 +48,44 @@ export const SubscriberSchema = z.object({
 export type CreateSubscriberInput = z.infer<typeof CreateSubscriberSchema>;
 export type SubscriberOutput = z.infer<typeof SubscriberSchema>;
 
+// Bdapps Subscription & Webhook Schemas
+export const BdappsWebhookSchema = z.object({
+  version: z.string().optional().default('1.0'),
+  applicationId: z.string().min(1, 'applicationId is required'),
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  status: z.enum([
+    'REGISTER',
+    'UNREGISTER',
+    'RENEW',
+    'CHARGE_SUCCESS',
+    'CHARGE_FAILURE',
+  ]),
+  frequency: z.string().optional().default('DAILY'),
+  timeStamp: z.string().optional(),
+  eventId: z.string().min(1, 'eventId is required'),
+});
+
+export const InitiateSubscriptionSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  phone: z
+    .string()
+    .min(10, 'Valid Bangladesh mobile number required (e.g. 018xxxxxxxx, 016xxxxxxxx)')
+    .max(16),
+});
+
+export const SubscriptionStatusSchema = z.object({
+  subscriberId: z.string(),
+  status: z.enum(['active', 'inactive', 'suspended']),
+  phone: z.string().optional(),
+  plan: z.string().default('daily_2bdt'),
+  isSubscribed: z.boolean(),
+  updatedAt: z.string(),
+});
+
+export type BdappsWebhookInput = z.infer<typeof BdappsWebhookSchema>;
+export type InitiateSubscriptionInput = z.infer<typeof InitiateSubscriptionSchema>;
+export type SubscriptionStatusOutput = z.infer<typeof SubscriptionStatusSchema>;
+
 // Profile Schemas
 export const SexSchema = z.enum(['male', 'female']);
 export const ActivityLevelSchema = z.enum([

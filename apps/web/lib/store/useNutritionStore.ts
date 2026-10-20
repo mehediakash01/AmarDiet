@@ -49,11 +49,24 @@ export function computeLocalNutrition(profile: UserProfile): NutritionTargets {
   };
 }
 
+export interface SubscriptionInfo {
+  subscriberId: string;
+  status: 'active' | 'inactive' | 'suspended';
+  isSubscribed: boolean;
+  phone?: string;
+  plan?: string;
+  carrier?: string;
+  cost?: string;
+  updatedAt?: string;
+}
+
 export interface NutritionState {
   subscriberId: string;
   isSubscriberReady: boolean;
   profile: UserProfile | null;
   nutrition: NutritionTargets | null;
+  subscription: SubscriptionInfo | null;
+  isSubscriptionLoading: boolean;
   selectedDate: string; // YYYY-MM-DD
   isSearchModalOpen: boolean;
   searchContext: 'log' | 'plan';
@@ -79,6 +92,10 @@ export interface NutritionState {
   openMealScan: (slot: MealSlot) => void;
   closeMealScan: () => void;
   loadProfile: () => Promise<void>;
+  loadSubscription: () => Promise<void>;
+  initiateSubscription: (
+    phone: string,
+  ) => Promise<{ success: boolean; message: string; instruction?: string }>;
   loadLogsForDate: (date?: string) => Promise<void>;
   logFood: (
     food: FoodItem,
@@ -150,6 +167,8 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   activePlanDay: null,
   dailyLogs: [],
   activePlan: null,
+  subscription: null,
+  isSubscriptionLoading: false,
   isLoading: false,
   planError: null,
   isScanModalOpen: false,
@@ -166,7 +185,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     const isAdmin = !!(adminKey && adminKey === expectedKey);
 
     set({ subscriberId: id, isSubscriberReady: true, isAdmin, adminKey });
-    await get().loadProfile();
+    await Promise.all([get().loadProfile(), get().loadSubscription()]);
   },
 
   setSubscriberId: (id: string) => set({ subscriberId: id }),
@@ -274,6 +293,52 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     } catch (e) {
       console.error('Failed to load cached profile:', e);
       set({ profile: null, nutrition: null });
+    }
+  },
+
+  loadSubscription: async () => {
+    if (typeof window === 'undefined') return;
+    const { subscriberId } = get();
+    if (!subscriberId) return;
+
+    try {
+      set({ isSubscriptionLoading: true });
+      const res = await fetch(`${getApiBaseUrl()}/api/subscription/status/${subscriberId}`);
+      if (res.ok) {
+        const data = await res.json();
+        set({ subscription: data });
+      }
+    } catch (err) {
+      console.warn('Could not reach server for subscription status:', err);
+    } finally {
+      set({ isSubscriptionLoading: false });
+    }
+  },
+
+  initiateSubscription: async (phone: string) => {
+    const { subscriberId } = get();
+    if (!subscriberId) throw new Error('Subscriber not initialized');
+
+    set({ isSubscriptionLoading: true });
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/subscription/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriberId, phone }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to initiate subscription');
+      }
+
+      await get().loadSubscription();
+      return {
+        success: true,
+        message: 'Subscription prompt sent to mobile device',
+        instruction: data.instruction,
+      };
+    } finally {
+      set({ isSubscriptionLoading: false });
     }
   },
 

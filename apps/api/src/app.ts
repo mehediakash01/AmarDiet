@@ -57,6 +57,14 @@ import {
 } from './modules/ai/meal-scan.repository.js';
 import { AiService } from './modules/ai/ai.service.js';
 import { aiRoutes } from './modules/ai/ai.routes.js';
+import {
+  type IWebhookEventRepository,
+  DrizzleWebhookEventRepository,
+  InMemoryWebhookEventRepository,
+} from './modules/webhook/webhook-event.repository.js';
+import { SubscriptionService } from './modules/subscription/subscription.service.js';
+import { subscriptionRoutes } from './modules/subscription/subscription.routes.js';
+import { BdappsClient } from './infrastructure/bdapps/bdapps.client.js';
 
 export interface AppOptions {
   subscriberRepo?: ISubscriberRepository;
@@ -66,6 +74,9 @@ export interface AppOptions {
   weightLogRepo?: IWeightLogRepository;
   foodRepo?: IFoodRepository;
   mealScanRepo?: IMealScanRepository;
+  webhookEventRepo?: IWebhookEventRepository;
+  subscriptionService?: SubscriptionService;
+  bdappsClient?: BdappsClient;
   foodService?: FoodService;
   visionProviders?: VisionProvider[];
   aiService?: AiService;
@@ -107,6 +118,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   let weightLogRepo = options.weightLogRepo;
   let foodRepo = options.foodRepo;
   let mealScanRepo = options.mealScanRepo;
+  let webhookEventRepo = options.webhookEventRepo;
 
   const db = getDatabase(options.databaseUrl);
   const usingRealDatabase = db !== null;
@@ -132,7 +144,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     !dietPlanRepo ||
     !weightLogRepo ||
     !foodRepo ||
-    !mealScanRepo
+    !mealScanRepo ||
+    !webhookEventRepo
   ) {
     if (db) {
       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
@@ -142,6 +155,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       weightLogRepo = weightLogRepo || new DrizzleWeightLogRepository(db);
       foodRepo = foodRepo || new DrizzleFoodRepository(db);
       mealScanRepo = mealScanRepo || new DrizzleMealScanRepository(db);
+      webhookEventRepo = webhookEventRepo || new DrizzleWebhookEventRepository(db);
     } else {
       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
       profileRepo = profileRepo || new InMemoryProfileRepository();
@@ -150,6 +164,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       weightLogRepo = weightLogRepo || new InMemoryWeightLogRepository();
       foodRepo = foodRepo || new InMemoryFoodRepository();
       mealScanRepo = mealScanRepo || new InMemoryMealScanRepository();
+      webhookEventRepo = webhookEventRepo || new InMemoryWebhookEventRepository();
     }
   }
 
@@ -207,7 +222,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const visionGateway = new VisionGateway(visionProviders);
   const aiService = options.aiService || new AiService(visionGateway, mealScanRepo, foodService);
 
+  const bdappsClient = options.bdappsClient || new BdappsClient();
+  const subscriptionService =
+    options.subscriptionService ||
+    new SubscriptionService(subscriberRepo, webhookEventRepo, bdappsClient);
+
   await app.register(subscriberRoutes(subscriberService));
+  await app.register(subscriptionRoutes(subscriptionService));
   await app.register(profileRoutes(profileService));
   await app.register(foodRoutes(foodService));
   await app.register(foodLogRoutes(foodLogService));
