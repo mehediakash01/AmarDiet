@@ -5,6 +5,7 @@ import { InMemorySubscriberRepository } from '../../apps/api/src/modules/subscri
 import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/profile.repository.js';
 import { InMemoryFoodLogRepository } from '../../apps/api/src/modules/food-log/food-log.repository.js';
 import { InMemoryWeightLogRepository } from '../../apps/api/src/modules/progress/progress.repository.js';
+import { InMemoryDietPlanRepository } from '../../apps/api/src/modules/diet-plan/diet-plan.repository.js';
 import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
 import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
 
@@ -14,6 +15,7 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
   let profileRepo: InMemoryProfileRepository;
   let foodLogRepo: InMemoryFoodLogRepository;
   let weightLogRepo: InMemoryWeightLogRepository;
+  let dietPlanRepo: InMemoryDietPlanRepository;
   let foodService: FoodService;
 
   const subscriberId = 'sub-test-progress-1';
@@ -23,6 +25,7 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
     profileRepo = new InMemoryProfileRepository();
     foodLogRepo = new InMemoryFoodLogRepository();
     weightLogRepo = new InMemoryWeightLogRepository();
+    dietPlanRepo = new InMemoryDietPlanRepository();
     foodService = new FoodService(new InMemoryFoodRepository());
     await foodService.init();
 
@@ -31,6 +34,7 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
       profileRepo,
       foodLogRepo,
       weightLogRepo,
+      dietPlanRepo,
       foodService,
     });
 
@@ -249,6 +253,97 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
       const fetched = JSON.parse(getRes.body);
       expect(fetched.caloriesPer100g).toBe(380);
       expect(fetched.proteinPer100g).toBe(15);
+    });
+
+    it('PATCH /api/admin/foods/:id verifies food entry with verifiedAt timestamp', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/admin/foods',
+        headers: adminHeaders,
+        payload: {
+          canonicalName: 'Unverified Herbal Tea',
+          cuisineTags: ['beverage'],
+          category: 'packaged',
+          caloriesPer100g: 2,
+          proteinPer100g: 0.1,
+          carbsPer100g: 0.4,
+          fatPer100g: 0,
+          fiberPer100g: 0,
+          commonServings: [{ label: '1 cup', grams: 240 }],
+        },
+      });
+      const created = JSON.parse(createRes.body);
+
+      const today = new Date().toISOString().split('T')[0];
+      const verifyRes = await app.inject({
+        method: 'PATCH',
+        url: `/api/admin/foods/${created.id}`,
+        headers: adminHeaders,
+        payload: {
+          verifiedAt: today,
+        },
+      });
+
+      expect(verifyRes.statusCode).toBe(200);
+      const verified = JSON.parse(verifyRes.body);
+      expect(verified.verifiedAt).toBe(today);
+    });
+
+    it('DoD: newly added admin food is immediately usable in meal customization', async () => {
+      // 1. Generate a diet plan for subscriber
+      const planRes = await app.inject({
+        method: 'POST',
+        url: '/api/diet-plan/generate',
+        payload: { subscriberId },
+      });
+      expect(planRes.statusCode).toBe(201);
+      const plan = JSON.parse(planRes.body);
+      const firstDay = plan.days[0].day;
+
+      // 2. Admin adds brand-new food
+      const adminRes = await app.inject({
+        method: 'POST',
+        url: '/api/admin/foods',
+        headers: adminHeaders,
+        payload: {
+          canonicalName: 'Shatkora Beef Curry',
+          localNames: ['সাতকড়া গরুর মাংস'],
+          cuisineTags: ['bengali', 'sylheti', 'curry'],
+          category: 'protein',
+          caloriesPer100g: 210,
+          proteinPer100g: 22,
+          carbsPer100g: 3,
+          fatPer100g: 12,
+          fiberPer100g: 1,
+          commonServings: [{ label: '1 katori', grams: 150 }],
+        },
+      });
+      expect(adminRes.statusCode).toBe(201);
+      const newFood = JSON.parse(adminRes.body);
+
+      // 3. User immediately adds this new food into their diet plan meal slot
+      const addRes = await app.inject({
+        method: 'POST',
+        url: '/api/diet-plan/item/add',
+        payload: {
+          subscriberId,
+          day: firstDay,
+          mealSlot: 'dinner',
+          foodId: newFood.id,
+          quantity: 150,
+          unit: 'g',
+        },
+      });
+      expect(addRes.statusCode).toBe(200);
+      const updatedPlan = JSON.parse(addRes.body);
+      const updatedDay = updatedPlan.days.find((d: any) => d.day === firstDay);
+      const dinnerMeal = updatedDay.meals.find((m: any) => m.mealSlot === 'dinner');
+      const addedItem = dinnerMeal.items.find((i: any) => i.foodId === newFood.id);
+
+      expect(addedItem).toBeDefined();
+      expect(addedItem.foodName).toBe('Shatkora Beef Curry');
+      expect(addedItem.calculatedNutrition.calories).toBe(Math.round(210 * 1.5));
+      expect(dinnerMeal.isCustomized).toBe(true);
     });
   });
 });

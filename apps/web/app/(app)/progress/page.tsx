@@ -270,22 +270,58 @@ export default function ProgressPage() {
 
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [serverAdherence, setServerAdherence] = useState<{
+    days: Array<{ date: string; dayLabel: string; isLogged: boolean; adherent: boolean }>;
+    adherencePercent: number;
+    daysLoggedCount: number;
+  } | null>(null);
 
-  // Seed from profile weight if no entries yet
-  useEffect(() => {
-    if (profile?.weight_kg && weightLogs.length === 0) {
-      setWeightLogs([
-        {
-          id: 'init_1',
-          subscriberId,
-          weight_kg: profile.weight_kg,
-          loggedOn: new Date().toISOString().split('T')[0],
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+  const fetchProgress = async () => {
+    if (!subscriberId) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/progress/${subscriberId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.weightHistory && Array.isArray(data.weightHistory) && data.weightHistory.length > 0) {
+          const sorted = [...data.weightHistory].sort((a, b) =>
+            a.loggedOn > b.loggedOn ? 1 : -1,
+          );
+          setWeightLogs(sorted);
+        } else if (profile?.weight_kg) {
+          setWeightLogs([
+            {
+              id: 'init_1',
+              subscriberId,
+              weight_kg: profile.weight_kg,
+              loggedOn: new Date().toISOString().split('T')[0],
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+        }
+
+        if (data.weeklyAdherence) {
+          setServerAdherence(data.weeklyAdherence);
+        }
+      }
+    } catch {
+      // Offline fallback: keep local / profile state
+      if (profile?.weight_kg && weightLogs.length === 0) {
+        setWeightLogs([
+          {
+            id: 'init_1',
+            subscriberId,
+            weight_kg: profile.weight_kg,
+            loggedOn: new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile]);
+  };
+
+  useEffect(() => {
+    fetchProgress();
+  }, [subscriberId, profile?.weight_kg]);
 
   const handleLog = async (weight: number, date: string) => {
     const newEntry: WeightLog = {
@@ -306,6 +342,7 @@ export default function ProgressPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscriberId, weight_kg: weight, loggedOn: date }),
       });
+      await fetchProgress();
     } catch {
       // offline — already stored locally
     }
@@ -317,19 +354,21 @@ export default function ProgressPage() {
   const targetWeight = profile?.target_weight_kg ?? (profile?.weight_kg ? profile.weight_kg - 4 : 66);
   const weightDelta = Math.round((currentWeight - startingWeight) * 10) / 10;
 
-  // Weekly adherence
+  // Weekly adherence (server backed or calculated)
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const today = new Date();
-  const weeklyDays = Array.from({ length: 7 }, (_, idx) => {
+  const fallbackDays = Array.from({ length: 7 }, (_, idx) => {
     const d = new Date(today);
     d.setDate(today.getDate() - (6 - idx));
     const dateStr = d.toISOString().split('T')[0];
     const isToday = idx === 6;
-    const isLogged = isToday ? dailyLogs.length > 0 : weightLogs.some((l) => l.loggedOn === dateStr) || idx % 3 !== 0;
-    return { label: dayNames[d.getDay()], date: dateStr, isLogged };
+    const isLogged = isToday ? dailyLogs.length > 0 : weightLogs.some((l) => l.loggedOn === dateStr);
+    return { dayLabel: dayNames[d.getDay()], date: dateStr, isLogged, adherent: isLogged };
   });
-  const loggedDaysCount = weeklyDays.filter((d) => d.isLogged).length;
-  const adherencePercent = Math.round((loggedDaysCount / 7) * 100);
+
+  const weeklyDays = serverAdherence?.days || fallbackDays;
+  const loggedDaysCount = serverAdherence?.daysLoggedCount ?? weeklyDays.filter((d) => d.isLogged).length;
+  const adherencePercent = serverAdherence?.adherencePercent ?? Math.round((loggedDaysCount / 7) * 100);
 
   // Macro compliance
   const consumedToday = useMemo(
@@ -497,7 +536,7 @@ export default function ProgressPage() {
             <div className="grid grid-cols-7 gap-1.5 text-center mb-3">
               {weeklyDays.map((day) => (
                 <div key={day.date} className="flex flex-col items-center space-y-1.5">
-                  <span className="text-[10px] text-zinc-500 font-medium">{day.label}</span>
+                  <span className="text-[10px] text-zinc-500 font-medium">{day.dayLabel}</span>
                   <div
                     className={`w-7 h-7 rounded-full flex items-center justify-center border transition ${
                       day.isLogged
