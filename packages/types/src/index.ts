@@ -245,5 +245,28 @@ export interface GroceryList {
   totalItemCount: number;
 }
 
+export interface WaterLog {
+  id: string;
+  subscriberId: string;
+  loggedOn: string; // YYYY-MM-DD
+  amount_ml: number;
+  target_ml: number;
+}
+
+export type FastingMode = '16_8' | '14_10' | '18_6' | 'ramadan' | 'custom';
+
+export interface FastingSession {
+  subscriberId: string;
+  mode: FastingMode;
+  startTime: string; // ISO string
+  targetHours: number;
+  isActive: boolean;
+}
+
+export interface HydrationSummary {
+  water: WaterLog;
+  fasting: FastingSession | null;
+}
+
 
 

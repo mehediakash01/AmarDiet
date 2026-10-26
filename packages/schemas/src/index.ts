@@ -333,5 +333,23 @@ export type ScannedFoodItem = z.infer<typeof ScannedFoodItemSchema>;
 export type MealScanResult = z.infer<typeof MealScanResultSchema>;
 export type ScanMealRequestInput = z.infer<typeof ScanMealRequestSchema>;
 
+// Hydration & Fasting Schemas
+export const LogWaterSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  delta_ml: z.number().int(),
+  target_ml: z.number().int().positive().optional(),
+});
+export type LogWaterInput = z.infer<typeof LogWaterSchema>;
+
+export const UpdateFastingSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  mode: z.enum(['16_8', '14_10', '18_6', 'ramadan', 'custom']),
+  startTime: z.string().min(1),
+  targetHours: z.number().positive().max(72),
+  isActive: z.boolean(),
+});
+export type UpdateFastingInput = z.infer<typeof UpdateFastingSchema>;
+
 
 

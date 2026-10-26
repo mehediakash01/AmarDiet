@@ -3,11 +3,13 @@ import type {
   CalculatedNutrition,
   DietPlan,
   DietPlanItem,
+  FastingSession,
   FoodItem,
   GroceryList,
   MealSlot,
   NutritionTargets,
   UserProfile,
+  WaterLog,
 } from '@thali/types';
 import { db, type LocalFoodLogEntry } from '../db/db';
 import { syncEngine } from '../sync/syncEngine';
@@ -118,6 +120,19 @@ export interface NutritionState {
   isGroceryLoading: boolean;
   groceryError: string | null;
   loadGroceryList: () => Promise<void>;
+
+  // Hydration & Fasting Tracker Actions
+  waterLog: WaterLog | null;
+  fastingSession: FastingSession | null;
+  isHydrationLoading: boolean;
+  loadHydration: (date?: string) => Promise<void>;
+  logWater: (delta_ml: number) => Promise<void>;
+  updateFasting: (session: {
+    mode: FastingSession['mode'];
+    startTime: string;
+    targetHours: number;
+    isActive: boolean;
+  }) => Promise<void>;
 }
 
 function getTodayString(): string {
@@ -181,6 +196,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   groceryList: null,
   isGroceryLoading: false,
   groceryError: null,
+  waterLog: null,
+  fastingSession: null,
+  isHydrationLoading: false,
   isScanModalOpen: false,
   isAdmin: false,
   adminKey: null,
@@ -653,6 +671,85 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         isGroceryLoading: false,
         groceryError: "Couldn't reach the server to load grocery list. Check your connection.",
       });
+    }
+  },
+
+  loadHydration: async (date) => {
+    const { subscriberId, selectedDate } = get();
+    if (!subscriberId) return;
+    const targetDate = date || selectedDate;
+    set({ isHydrationLoading: true });
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/hydration/${subscriberId}?date=${targetDate}`);
+      if (res.ok) {
+        const data = await res.json();
+        set({
+          waterLog: data.water,
+          fastingSession: data.fasting,
+          isHydrationLoading: false,
+        });
+        return;
+      }
+    } catch (e) {
+      console.error('Failed to load hydration:', e);
+    }
+    set({ isHydrationLoading: false });
+  },
+
+  logWater: async (delta_ml: number) => {
+    const { subscriberId, selectedDate, waterLog } = get();
+    if (!subscriberId) return;
+
+    if (waterLog) {
+      const nextAmount = Math.max(0, waterLog.amount_ml + delta_ml);
+      set({ waterLog: { ...waterLog, amount_ml: nextAmount } });
+    }
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/hydration/water`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscriberId,
+          date: selectedDate,
+          delta_ml,
+          target_ml: waterLog?.target_ml,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        set({ waterLog: updated });
+      }
+    } catch (e) {
+      console.error('Failed to sync water log:', e);
+    }
+  },
+
+  updateFasting: async (session) => {
+    const { subscriberId } = get();
+    if (!subscriberId) return;
+
+    const updatedSession: FastingSession = {
+      subscriberId,
+      ...session,
+    };
+    set({ fastingSession: updatedSession });
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/hydration/fasting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscriberId,
+          ...session,
+        }),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        set({ fastingSession: saved });
+      }
+    } catch (e) {
+      console.error('Failed to sync fasting session:', e);
     }
   },
 }));

@@ -204,5 +204,48 @@ export const webhookEvents = pgTable(
 export type WebhookEventRow = typeof webhookEvents.$inferSelect;
 export type NewWebhookEventRow = typeof webhookEvents.$inferInsert;
 
+/**
+ * Water Logs table — daily hydration tracking per subscriber
+ */
+export const waterLogs = pgTable(
+  'water_logs',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    subscriberId: varchar('subscriber_id', { length: 64 })
+      .notNull()
+      .references(() => subscribers.id, { onDelete: 'cascade' }),
+    loggedOn: varchar('logged_on', { length: 16 }).notNull(), // YYYY-MM-DD
+    amount_ml: integer('amount_ml').notNull().default(0),
+    target_ml: integer('target_ml').notNull().default(2500),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    subscriberDateIdx: index('water_logs_subscriber_date_idx').on(
+      table.subscriberId,
+      table.loggedOn,
+    ),
+  }),
+);
+
+export type WaterLogRow = typeof waterLogs.$inferSelect;
+export type NewWaterLogRow = typeof waterLogs.$inferInsert;
+
+/**
+ * Fasting Sessions table — intermittent fasting & Ramadan timer state
+ */
+export const fastingSessions = pgTable('fasting_sessions', {
+  subscriberId: varchar('subscriber_id', { length: 64 })
+    .primaryKey()
+    .references(() => subscribers.id, { onDelete: 'cascade' }),
+  mode: varchar('mode', { length: 32 }).notNull().default('16_8'),
+  startTime: timestamp('start_time', { withTimezone: true }).notNull(),
+  targetHours: integer('target_hours').notNull().default(16),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type FastingSessionRow = typeof fastingSessions.$inferSelect;
+export type NewFastingSessionRow = typeof fastingSessions.$inferInsert;
+
 
 

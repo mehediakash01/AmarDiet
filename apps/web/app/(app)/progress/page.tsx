@@ -18,6 +18,7 @@ import {
 import type { WeightLog } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { getApiBaseUrl } from '@/lib/identity/subscriberId';
+import HealthReportExport from '@/components/HealthReportExport';
 
 // ─── SVG Weight Trend Chart ───────────────────────────────────────────────────
 function WeightTrendChart({
@@ -267,6 +268,8 @@ export default function ProgressPage() {
   const profile = useNutritionStore((s) => s.profile);
   const nutrition = useNutritionStore((s) => s.nutrition);
   const dailyLogs = useNutritionStore((s) => s.dailyLogs);
+  const waterLog = useNutritionStore((s) => s.waterLog);
+  const fastingSession = useNutritionStore((s) => s.fastingSession);
 
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -421,13 +424,25 @@ export default function ProgressPage() {
             Weight trend, habit adherence, and macro compliance at a glance.
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center space-x-1.5 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-sm font-bold rounded-xl transition min-h-[44px]"
-        >
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">Log Weight</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <HealthReportExport
+            profile={profile}
+            nutrition={nutrition}
+            dailyLogs={dailyLogs}
+            weightLogs={weightLogs}
+            waterLog={waterLog}
+            fastingSession={fastingSession}
+            streak={streak}
+            adherencePercent={adherencePercent}
+          />
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center space-x-1.5 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-sm font-bold rounded-xl transition min-h-[44px]"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Log Weight</span>
+          </button>
+        </div>
       </div>
 
       {/* Scorecard Row */}
