@@ -341,4 +341,56 @@ describe('API Integration: Diet Plan Generation & Meal Customization', () => {
       expect(monFinal.totals.calories).toBeGreaterThan(1000);
     });
   });
+
+  describe('Weekly Bazaar / Grocery List Aggregator', () => {
+    it('GET /api/diet-plan/grocery-list/:subscriberId aggregates active 7-day plan into market categories with local units', async () => {
+      // 1. Generate plan first
+      await app.inject({
+        method: 'POST',
+        url: '/api/diet-plan/generate',
+        payload: { subscriberId },
+      });
+
+      // 2. Fetch grocery list
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/diet-plan/grocery-list/${subscriberId}`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      const list = JSON.parse(res.body);
+
+      expect(list.subscriberId).toBe(subscriberId);
+      expect(list.totalItemCount).toBeGreaterThan(5);
+      expect(list.categories.length).toBeGreaterThanOrEqual(3);
+
+      // Verify category structure
+      const categoryIds = list.categories.map((c: { id: string }) => c.id);
+      expect(categoryIds).toContain('protein');
+      expect(categoryIds).toContain('grains_pulses');
+
+      // Verify items have marketCategory, localNames, and displayQuantity
+      const allItems = list.categories.flatMap((c: { items: any[] }) => c.items);
+      for (const item of allItems) {
+        expect(item.foodId).toBeDefined();
+        expect(item.canonicalName).toBeDefined();
+        expect(item.displayQuantity).toBeDefined();
+        expect(typeof item.totalGrams).toBe('number');
+      }
+
+      // Check egg local units if egg exists in plan
+      const eggItem = allItems.find((i: { foodId: string }) => i.foodId.includes('egg') || i.foodId.includes('dim'));
+      if (eggItem && eggItem.totalPieces) {
+        expect(eggItem.displayQuantity).toContain('hali');
+      }
+    });
+
+    it('returns 404 for grocery list when subscriber profile does not exist', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/diet-plan/grocery-list/non-existent-sub',
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
 });

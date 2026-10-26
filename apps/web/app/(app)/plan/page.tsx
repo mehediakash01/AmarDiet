@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, X, RefreshCw, Sparkles, Loader2, Utensils } from 'lucide-react';
+import { Plus, X, RefreshCw, Sparkles, Loader2, Utensils, ShoppingBag, CalendarDays } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
+import { BazaarListView } from '@/components/BazaarListView';
 
 const SLOT_COLORS: Record<string, string> = {
   breakfast: 'text-amber-400',
@@ -25,6 +26,7 @@ export default function DietPlanPage() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeDay, setActiveDay] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'plan' | 'bazaar'>('plan');
 
   useEffect(() => {
     loadPlan();
@@ -160,8 +162,42 @@ export default function DietPlanPage() {
         </div>
       )}
 
-      {/* ── Day Tabs ──────────────────────────────────────────────────────── */}
+      {/* ── View Switcher: Daily Meal Plan vs Weekly Bazaar List ─────────── */}
       {activePlan && (
+        <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+          <button
+            type="button"
+            onClick={() => setViewMode('plan')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+              viewMode === 'plan'
+                ? 'bg-zinc-800 border-zinc-700 text-cyan-300 shadow-sm'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+            }`}
+          >
+            <CalendarDays className="w-4 h-4 text-cyan-400" />
+            <span>Daily Meal Plan</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('bazaar')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+              viewMode === 'bazaar'
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm'
+                : 'border-transparent text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4 text-emerald-400" />
+            <span>Weekly Bazaar List (বাজারের ফর্দ)</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Weekly Bazaar View ────────────────────────────────────────────── */}
+      {activePlan && viewMode === 'bazaar' && <BazaarListView />}
+
+      {/* ── Day Tabs (Plan View Only) ──────────────────────────────────────── */}
+      {activePlan && viewMode === 'plan' && (
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {activePlan.days.map((d) => {
             const isActive = d.day.toLowerCase() === activeDay?.toLowerCase();
@@ -184,8 +220,8 @@ export default function DietPlanPage() {
         </div>
       )}
 
-      {/* ── Active Day: Meal Cards ─────────────────────────────────────────── */}
-      {activeDayData && (
+      {/* ── Active Day: Meal Cards (Plan View Only) ──────────────────────── */}
+      {activeDayData && viewMode === 'plan' && (
         <div className="space-y-4">
           {activeDayData.meals.map((meal) => {
             const slotLabel =
@@ -292,8 +328,8 @@ export default function DietPlanPage() {
         </div>
       )}
 
-      {/* ── Sticky Day Summary ─────────────────────────────────────────────── */}
-      {dayTotal && activePlan && (
+      {/* ── Sticky Day Summary (Plan View Only) ──────────────────────────── */}
+      {dayTotal && activePlan && viewMode === 'plan' && (
         <div className="bg-zinc-900/95 border border-zinc-800 rounded-2xl p-4 flex flex-wrap gap-4 items-center justify-between sticky bottom-4">
           <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">
             {activeDay} Total

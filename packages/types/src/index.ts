@@ -218,5 +218,32 @@ export interface ProgressSummary {
   };
 }
 
+export interface GroceryItem {
+  foodId: string;
+  canonicalName: string;
+  localNames?: string[];
+  category: string;
+  marketCategory: string; // "produce" | "protein" | "grains_pulses" | "dairy_fats" | "pantry"
+  marketCategoryBn: string;
+  totalGrams: number;
+  totalPieces?: number;
+  displayQuantity: string;
+}
+
+export interface GroceryMarketCategoryGroup {
+  id: string;
+  title: string;
+  titleBn: string;
+  items: GroceryItem[];
+}
+
+export interface GroceryList {
+  planId: string;
+  subscriberId: string;
+  generatedAt: string;
+  categories: GroceryMarketCategoryGroup[];
+  totalItemCount: number;
+}
+
 
 

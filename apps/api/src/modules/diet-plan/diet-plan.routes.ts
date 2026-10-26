@@ -28,6 +28,23 @@ export const dietPlanRoutes = (service: DietPlanService): FastifyPluginAsync => 
       }
     });
 
+    // Aggregate weekly grocery / bazaar list from active diet plan
+    fastify.get('/api/diet-plan/grocery-list/:subscriberId', async (request, reply) => {
+      const { subscriberId } = request.params as { subscriberId: string };
+      let groceryList = await service.getGroceryList(subscriberId);
+      if (!groceryList) {
+        try {
+          await service.generatePlan(subscriberId);
+          groceryList = await service.getGroceryList(subscriberId);
+        } catch {
+          return reply.status(404).send({
+            error: 'Could not generate grocery list (missing profile / diet plan)',
+          });
+        }
+      }
+      return reply.send(groceryList);
+    });
+
     // Retrieve active diet plan for subscriber
     fastify.get('/api/diet-plan/:subscriberId', async (request, reply) => {
       const { subscriberId } = request.params as { subscriberId: string };

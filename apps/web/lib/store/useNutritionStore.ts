@@ -4,6 +4,7 @@ import type {
   DietPlan,
   DietPlanItem,
   FoodItem,
+  GroceryList,
   MealSlot,
   NutritionTargets,
   UserProfile,
@@ -111,6 +112,12 @@ export interface NutritionState {
   generatePlan: () => Promise<void>;
   addPlanItem: (food: FoodItem, quantity: number, unit?: string) => Promise<void>;
   removePlanItem: (day: string, slot: MealSlot, foodId: string, index?: number) => Promise<void>;
+
+  // Weekly Grocery / Bazaar Actions
+  groceryList: GroceryList | null;
+  isGroceryLoading: boolean;
+  groceryError: string | null;
+  loadGroceryList: () => Promise<void>;
 }
 
 function getTodayString(): string {
@@ -171,6 +178,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   isSubscriptionLoading: false,
   isLoading: false,
   planError: null,
+  groceryList: null,
+  isGroceryLoading: false,
+  groceryError: null,
   isScanModalOpen: false,
   isAdmin: false,
   adminKey: null,
@@ -620,5 +630,29 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     });
 
     set({ activePlan: { ...activePlan, days: newDays } });
+  },
+
+  loadGroceryList: async () => {
+    const { subscriberId } = get();
+    if (!subscriberId) return;
+    set({ isGroceryLoading: true, groceryError: null });
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/diet-plan/grocery-list/${subscriberId}`);
+      if (res.ok) {
+        const data = await res.json();
+        set({ groceryList: data, isGroceryLoading: false });
+        return;
+      }
+      set({
+        isGroceryLoading: false,
+        groceryError: `Failed to load grocery list (server error ${res.status}).`,
+      });
+    } catch (e) {
+      console.error('Failed to load grocery list:', e);
+      set({
+        isGroceryLoading: false,
+        groceryError: "Couldn't reach the server to load grocery list. Check your connection.",
+      });
+    }
   },
 }));

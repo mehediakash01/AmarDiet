@@ -5,6 +5,9 @@ import type {
   DietPlanDay,
   DietPlanItem,
   DietPlanMeal,
+  GroceryItem,
+  GroceryList,
+  GroceryMarketCategoryGroup,
   MealSlot,
   UserProfile,
 } from '@thali/types';
@@ -157,6 +160,115 @@ export class DietPlanService {
 
   async getPlanBySubscriberId(subscriberId: string): Promise<DietPlan | null> {
     return this.repository.findBySubscriberId(subscriberId);
+  }
+
+  async getGroceryList(subscriberId: string): Promise<GroceryList | null> {
+    const plan = await this.repository.findBySubscriberId(subscriberId);
+    if (!plan) return null;
+
+    const itemMap = new Map<
+      string,
+      {
+        foodId: string;
+        foodName: string;
+        totalGrams: number;
+        totalPieces: number;
+        unit: string;
+      }
+    >();
+
+    for (const day of plan.days) {
+      for (const meal of day.meals) {
+        for (const item of meal.items) {
+          const existing = itemMap.get(item.foodId) || {
+            foodId: item.foodId,
+            foodName: item.foodName,
+            totalGrams: 0,
+            totalPieces: 0,
+            unit: item.unit || 'g',
+          };
+
+          const isCountable =
+            item.unit === 'piece' ||
+            item.unit === 'egg' ||
+            item.unit === 'slice';
+
+          if (isCountable) {
+            existing.totalPieces += item.quantity;
+            existing.totalGrams += item.quantity * 50;
+          } else {
+            existing.totalGrams += item.quantity;
+          }
+
+          itemMap.set(item.foodId, existing);
+        }
+      }
+    }
+
+    const categoryBuckets: Record<string, GroceryItem[]> = {
+      protein: [],
+      produce: [],
+      grains_pulses: [],
+      dairy_fats: [],
+      pantry: [],
+    };
+
+    for (const aggregated of itemMap.values()) {
+      const food = this.foodService.getFoodById(aggregated.foodId);
+      const category = food?.category || 'general';
+      const localNames = food?.localNames;
+      const canonicalName = food?.canonicalName || aggregated.foodName;
+
+      const classification = classifyMarketCategory(category, canonicalName);
+      const displayQuantity = formatGroceryQuantity(
+        aggregated.foodId,
+        aggregated.totalGrams,
+        aggregated.totalPieces,
+        aggregated.unit,
+      );
+
+      const groceryItem: GroceryItem = {
+        foodId: aggregated.foodId,
+        canonicalName,
+        localNames,
+        category,
+        marketCategory: classification.id,
+        marketCategoryBn: classification.titleBn,
+        totalGrams: Math.round(aggregated.totalGrams),
+        totalPieces: aggregated.totalPieces > 0 ? aggregated.totalPieces : undefined,
+        displayQuantity,
+      };
+
+      if (!categoryBuckets[classification.id]) {
+        categoryBuckets[classification.id] = [];
+      }
+      categoryBuckets[classification.id].push(groceryItem);
+    }
+
+    const categoryDefinitions: Array<{ id: string; title: string; titleBn: string }> = [
+      { id: 'protein', title: 'Fish, Meat & Eggs', titleBn: 'মাছ, মাংস ও ডিম' },
+      { id: 'produce', title: 'Fresh Produce & Vegetables', titleBn: 'কাঁচাবাজার ও সবজি' },
+      { id: 'grains_pulses', title: 'Rice, Grains & Lentils', titleBn: 'চাল, ডাল ও আটা' },
+      { id: 'dairy_fats', title: 'Dairy & Cooking Oils', titleBn: 'দুধ, দই ও তেল' },
+      { id: 'pantry', title: 'Nuts, Seeds & Pantry', titleBn: 'বাদাম ও অন্যান্য' },
+    ];
+
+    const categories: GroceryMarketCategoryGroup[] = categoryDefinitions
+      .map((def) => ({
+        id: def.id,
+        title: def.title,
+        titleBn: def.titleBn,
+        items: categoryBuckets[def.id] || [],
+      }))
+      .filter((group) => group.items.length > 0);
+
+    return {
+      planId: plan.id,
+      subscriberId,
+      generatedAt: new Date().toISOString(),
+      categories,
+      totalItemCount: itemMap.size,
+    };
   }
 
   async addItemToMeal(input: AddDietPlanItemInput): Promise<DietPlan> {
@@ -469,3 +581,131 @@ interface FoodPick {
 function roundToNearest(value: number, step: number): number {
   return Math.max(step, Math.round(value / step) * step);
 }
+
+function classifyMarketCategory(
+  category?: string,
+  name?: string,
+): { id: string; title: string; titleBn: string } {
+  const cat = (category || '').toLowerCase();
+  const n = (name || '').toLowerCase();
+
+  if (
+    cat.includes('meat') ||
+    cat.includes('fish') ||
+    cat.includes('poultry') ||
+    cat.includes('egg') ||
+    cat.includes('seafood') ||
+    n.includes('murgi') ||
+    n.includes('chicken') ||
+    n.includes('fish') ||
+    n.includes('mach') ||
+    n.includes('dim') ||
+    n.includes('egg') ||
+    n.includes('beef') ||
+    n.includes('tuna')
+  ) {
+    return {
+      id: 'protein',
+      title: 'Fish, Meat & Eggs',
+      titleBn: 'মাছ, মাংস ও ডিম',
+    };
+  }
+
+  if (
+    cat.includes('vegetable') ||
+    cat.includes('fruit') ||
+    cat.includes('greens') ||
+    n.includes('shaak') ||
+    n.includes('torkari') ||
+    n.includes('alu') ||
+    n.includes('potato') ||
+    n.includes('tomato') ||
+    n.includes('cucumber') ||
+    n.includes('banana') ||
+    n.includes('apple')
+  ) {
+    return {
+      id: 'produce',
+      title: 'Fresh Produce & Vegetables',
+      titleBn: 'কাঁচাবাজার ও সবজি',
+    };
+  }
+
+  if (
+    cat.includes('grain') ||
+    cat.includes('lentil') ||
+    cat.includes('pulse') ||
+    cat.includes('bread') ||
+    cat.includes('cereal') ||
+    n.includes('bhat') ||
+    n.includes('rice') ||
+    n.includes('ruti') ||
+    n.includes('roti') ||
+    n.includes('dal') ||
+    n.includes('daal') ||
+    n.includes('oats') ||
+    n.includes('bread')
+  ) {
+    return {
+      id: 'grains_pulses',
+      title: 'Rice, Grains & Lentils',
+      titleBn: 'চাল, ডাল ও আটা',
+    };
+  }
+
+  if (
+    cat.includes('dairy') ||
+    cat.includes('milk') ||
+    cat.includes('oil') ||
+    cat.includes('fat') ||
+    n.includes('doi') ||
+    n.includes('yogurt') ||
+    n.includes('milk') ||
+    n.includes('dudh') ||
+    n.includes('tel') ||
+    n.includes('oil') ||
+    n.includes('ghee') ||
+    n.includes('butter')
+  ) {
+    return {
+      id: 'dairy_fats',
+      title: 'Dairy & Cooking Oils',
+      titleBn: 'দুধ, দই ও তেল',
+    };
+  }
+
+  return {
+    id: 'pantry',
+    title: 'Nuts, Seeds & Pantry',
+    titleBn: 'বাদাম ও অন্যান্য',
+  };
+}
+
+function formatGroceryQuantity(
+  _foodId: string,
+  grams: number,
+  pieces: number,
+  _unit: string,
+): string {
+  if (pieces > 0) {
+    const halis = pieces / 4;
+    const haliStr = Number.isInteger(halis) ? `${halis} hali / ${halis} হালি` : `${halis.toFixed(1)} hali / ${halis.toFixed(1)} হালি`;
+    return `${pieces} pcs (${haliStr})`;
+  }
+
+  const roundedGrams = Math.round(grams);
+  if (roundedGrams >= 1000) {
+    const kg = Math.round((roundedGrams / 1000) * 10) / 10;
+    return `${kg} kg (${roundedGrams}g)`;
+  }
+
+  if (roundedGrams === 500) {
+    return '500g (আধা কেজি)';
+  }
+  if (roundedGrams === 250) {
+    return '250g (১ পোয়া)';
+  }
+
+  return `${roundedGrams}g`;
+}
+
