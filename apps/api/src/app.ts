@@ -57,6 +57,14 @@ import {
 } from './modules/ai/meal-scan.repository.js';
 import { AiService } from './modules/ai/ai.service.js';
 import { aiRoutes } from './modules/ai/ai.routes.js';
+import { ChatService } from './modules/ai/chat.service.js';
+import { chatRoutes } from './modules/ai/chat.routes.js';
+import { ChatGateway } from './modules/ai/chat-gateway.js';
+import { GeminiChatProvider } from './modules/ai/providers/gemini-chat.provider.js';
+import { GroqChatProvider } from './modules/ai/providers/groq-chat.provider.js';
+import { OpenRouterChatProvider } from './modules/ai/providers/openrouter-chat.provider.js';
+import { MistralChatProvider } from './modules/ai/providers/mistral-chat.provider.js';
+import type { ChatProvider } from './modules/ai/providers/chat-types.js';
 import {
   type IWebhookEventRepository,
   DrizzleWebhookEventRepository,
@@ -80,6 +88,8 @@ export interface AppOptions {
   foodService?: FoodService;
   visionProviders?: VisionProvider[];
   aiService?: AiService;
+  chatService?: ChatService;
+  chatProviders?: ChatProvider[];
   databaseUrl?: string;
   logger?: boolean;
   enableRateLimit?: boolean;
@@ -110,6 +120,14 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       }),
     });
   }
+
+  // Security headers for production hardening
+  app.addHook('onSend', async (_request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    reply.header('X-XSS-Protection', '1; mode=block');
+  });
 
   let subscriberRepo = options.subscriberRepo;
   let profileRepo = options.profileRepo;
@@ -222,6 +240,54 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const visionGateway = new VisionGateway(visionProviders);
   const aiService = options.aiService || new AiService(visionGateway, mealScanRepo, foodService);
 
+  // Nutrition chatbot — multi-provider fallback chain: Gemini → Groq → OpenRouter → Mistral.
+  // Each provider is registered only if its API key AND model name are configured.
+  // The chat route stays active as long as at least one provider is configured.
+  // When a provider hits its rate limit or fails 3 times in a row, the gateway
+  // automatically skips it (circuit open) and falls through to the next one.
+  const chatProviders: ChatProvider[] = options.chatProviders ?? [];
+  if (!options.chatProviders) {
+    if (process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL) {
+      chatProviders.push(
+        new GeminiChatProvider(process.env.GEMINI_API_KEY, process.env.GEMINI_CHAT_MODEL),
+      );
+    }
+    if (process.env.GROQ_API_KEY && process.env.GROQ_CHAT_MODEL) {
+      chatProviders.push(
+        new GroqChatProvider(process.env.GROQ_API_KEY, process.env.GROQ_CHAT_MODEL),
+      );
+    }
+    if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_CHAT_MODEL) {
+      chatProviders.push(
+        new OpenRouterChatProvider(
+          process.env.OPENROUTER_API_KEY,
+          process.env.OPENROUTER_CHAT_MODEL,
+        ),
+      );
+    }
+    if (process.env.MISTRAL_API_KEY && process.env.MISTRAL_CHAT_MODEL) {
+      chatProviders.push(
+        new MistralChatProvider(process.env.MISTRAL_API_KEY, process.env.MISTRAL_CHAT_MODEL),
+      );
+    }
+    if (chatProviders.length === 0) {
+      console.warn(
+        '\n⚠️  No chat providers configured — /api/ai/chat will return 503.\n' +
+          '    Set at least one of:\n' +
+          '      GEMINI_API_KEY + GEMINI_CHAT_MODEL\n' +
+          '      GROQ_API_KEY + GROQ_CHAT_MODEL\n' +
+          '      OPENROUTER_API_KEY + OPENROUTER_CHAT_MODEL\n' +
+          '      MISTRAL_API_KEY + MISTRAL_CHAT_MODEL\n',
+      );
+    }
+  }
+  const chatGateway = new ChatGateway(chatProviders);
+  const chatService =
+    options.chatService ||
+    (chatProviders.length > 0
+      ? new ChatService(chatGateway, profileService, foodLogService, dietPlanService)
+      : null);
+
   const bdappsClient = options.bdappsClient || new BdappsClient();
   const subscriptionService =
     options.subscriptionService ||
@@ -236,6 +302,14 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(progressRoutes(progressService));
   await app.register(adminRoutes(foodService));
   await app.register(aiRoutes(aiService));
+  if (chatService) {
+    await app.register(chatRoutes(chatService));
+  } else {
+    // Register stub so clients get a clear 503 rather than a 404
+    app.post('/api/ai/chat', async (_req, reply) =>
+      reply.status(503).send({ error: 'Nutrition chatbot not configured on this server.' }),
+    );
+  }
 
   return app;
 }
