@@ -34,6 +34,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  */
 export class ChatGateway {
   private circuits = new Map<string, CircuitState>();
+  private lastErrors = new Map<string, string>();
   private timeoutMs: number;
 
   constructor(
@@ -57,12 +58,13 @@ export class ChatGateway {
           provider.name,
         );
         this.recordSuccess(provider.name);
+        this.lastErrors.delete(provider.name);
         return { outcome: 'success', reply, providerUsed: provider.name };
       } catch (e) {
         this.recordFailure(provider.name);
-        console.error(
-          `[chat/gateway] ${provider.name} failed: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        const message = e instanceof Error ? e.message : String(e);
+        this.lastErrors.set(provider.name, message);
+        console.error(`[chat/gateway] ${provider.name} failed: ${message}`);
       }
     }
 
@@ -108,5 +110,10 @@ export class ChatGateway {
   /** For health checks / admin visibility. */
   getCircuitStates(): Record<string, CircuitState> {
     return Object.fromEntries(this.circuits);
+  }
+
+  /** Most recent failure message per provider (cleared on success). */
+  getLastErrors(): Record<string, string> {
+    return Object.fromEntries(this.lastErrors);
   }
 }

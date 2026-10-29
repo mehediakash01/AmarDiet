@@ -1,12 +1,16 @@
 ﻿import { ChatProviderError, type ChatProvider, type ChatProviderMessage } from './chat-types.js';
+import {
+  CHAT_MAX_TOKENS,
+  explainEmptyOpenAiResponse,
+  extractOpenAiText,
+  type OpenAiChatResponse,
+} from './openai-compat.js';
 
 /**
  * OpenRouter chat — aggregates hundreds of models, many free.
- * Model name from OPENROUTER_CHAT_MODEL. Good free choices:
- *   meta-llama/llama-3.1-8b-instruct:free
- *   mistralai/mistral-7b-instruct:free
- *   google/gemma-2-9b-it:free
- * Check https://openrouter.ai/models?q=free for current free models.
+ * Model name from OPENROUTER_CHAT_MODEL. Free models rotate constantly (older
+ * examples like mistral-7b-instruct:free no longer exist), so run
+ * `pnpm ai:check` or see https://openrouter.ai/models?q=free for what is live.
  */
 export class OpenRouterChatProvider implements ChatProvider {
   readonly name = 'openrouter';
@@ -24,7 +28,7 @@ export class OpenRouterChatProvider implements ChatProvider {
         ...messages.map((m) => ({ role: m.role, content: m.content })),
       ],
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: CHAT_MAX_TOKENS,
     };
 
     let res: Response;
@@ -48,11 +52,9 @@ export class OpenRouterChatProvider implements ChatProvider {
       throw new ChatProviderError(this.name, `HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
 
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const text = data.choices?.[0]?.message?.content?.trim();
-    if (!text) throw new ChatProviderError(this.name, 'response contained no message content');
+    const data = (await res.json()) as OpenAiChatResponse;
+    const text = extractOpenAiText(data);
+    if (!text) throw new ChatProviderError(this.name, explainEmptyOpenAiResponse(data));
     return text;
   }
 }

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
+import { getApiBaseUrl } from '@/lib/identity/subscriberId';
 
 interface Message {
   id: string;
@@ -67,7 +68,7 @@ export function ChatBot() {
       setLoading(true);
 
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/api/ai/chat`, {
+        const res = await fetch(`${getApiBaseUrl()}/api/ai/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -99,7 +100,14 @@ export function ChatBot() {
           {
             id: `err-${Date.now()}`,
             role: 'assistant',
-            content: e instanceof Error ? e.message : 'Something went wrong. Please try again.',
+            // A rejected fetch (TypeError) means the browser never got a
+            // response at all: server down, wrong NEXT_PUBLIC_API_URL, or CORS.
+            content:
+              e instanceof TypeError
+                ? `Can't reach the server at ${getApiBaseUrl()}. Make sure the API is running (pnpm dev:api).`
+                : e instanceof Error
+                  ? e.message
+                  : 'Something went wrong. Please try again.',
             error: true,
           },
         ]);

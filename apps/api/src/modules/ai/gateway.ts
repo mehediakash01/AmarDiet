@@ -36,6 +36,7 @@ const DEFAULT_PER_CALL_TIMEOUT_MS = 15_000;
  */
 export class VisionGateway {
   private circuits = new Map<string, CircuitState>();
+  private lastErrors = new Map<string, string>();
   private perCallTimeoutMs: number;
 
   constructor(
@@ -59,12 +60,13 @@ export class VisionGateway {
           provider.name,
         );
         this.recordSuccess(provider.name);
+        this.lastErrors.delete(provider.name);
         return { outcome: 'success', result, providerUsed: provider.name };
       } catch (e) {
         this.recordFailure(provider.name);
-        console.error(
-          `[ai/gateway] ${provider.name} failed: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        const message = e instanceof Error ? e.message : String(e);
+        this.lastErrors.set(provider.name, message);
+        console.error(`[ai/gateway] ${provider.name} failed: ${message}`);
         continue;
       }
     }
@@ -114,5 +116,10 @@ export class VisionGateway {
   /** Exposed for tests and admin/debug visibility, not used in the hot path. */
   getCircuitStates(): Record<string, CircuitState> {
     return Object.fromEntries(this.circuits);
+  }
+
+  /** Most recent failure message per provider (cleared on success). */
+  getLastErrors(): Record<string, string> {
+    return Object.fromEntries(this.lastErrors);
   }
 }

@@ -11,7 +11,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "db:migrate": "tsx src/scripts/migrate.ts",
-    "db:seed": "tsx src/scripts/seed-food-data.ts"
+    "db:seed": "tsx src/scripts/seed-food-data.ts",
+    "ai:check": "tsx src/scripts/check-ai.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

@@ -147,12 +147,16 @@ export class ChatService {
     const outcome = await this.gateway.chat(systemPrompt, messages);
 
     if (outcome.outcome === 'all_providers_failed') {
+      // attemptedProviders is empty when every provider's circuit is open
+      // (each failed 3x in a row and is cooling down for ~2 minutes).
+      const detail =
+        outcome.attemptedProviders.length > 0
+          ? `Attempted: ${outcome.attemptedProviders.join(', ')}`
+          : 'All providers are paused after repeated failures; retry in about 2 minutes';
       return {
         ok: false,
         status: 503,
-        error:
-          'All AI providers are currently unavailable. Please try again in a few minutes. Attempted: ' +
-          outcome.attemptedProviders.join(', '),
+        error: `All AI providers are currently unavailable. Please try again in a few minutes. ${detail}`,
       };
     }
 

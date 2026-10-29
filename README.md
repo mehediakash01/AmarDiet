@@ -253,6 +253,20 @@ pnpm db:import
 pnpm db:import --dry-run
 ```
 
+### 2b. Enable the AI features (chatbot + photo meal scan)
+```bash
+# 1. put a free Gemini key (https://aistudio.google.com/apikey) in apps/api/.env -> GEMINI_API_KEY=
+# 2. verify it — tests every configured provider with a real request:
+pnpm ai:check
+# 3. (re)start the API so it picks up the .env
+pnpm dev:api
+```
+A provider only activates when **both** its `*_API_KEY` and `*_MODEL` are set, and model names
+go stale fast (Gemini 1.5/2.0 and several Groq models are retired — they return a 404).
+If something is off, `pnpm ai:check` prints the exact error plus the model names your key can use,
+and `GET http://localhost:3001/api/ai/status` shows which providers the running server registered
+and why the last request failed.
+
 ### 3. Run Development Servers
 ```bash
 # Starts both Next.js Web (port 3000) and Fastify API (port 3001) concurrently

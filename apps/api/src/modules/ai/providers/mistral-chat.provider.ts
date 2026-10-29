@@ -1,4 +1,10 @@
 ﻿import { ChatProviderError, type ChatProvider, type ChatProviderMessage } from './chat-types.js';
+import {
+  CHAT_MAX_TOKENS,
+  explainEmptyOpenAiResponse,
+  extractOpenAiText,
+  type OpenAiChatResponse,
+} from './openai-compat.js';
 
 /**
  * Mistral AI chat — OpenAI-compatible, strong multilingual support
@@ -22,7 +28,7 @@ export class MistralChatProvider implements ChatProvider {
         ...messages.map((m) => ({ role: m.role, content: m.content })),
       ],
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: CHAT_MAX_TOKENS,
     };
 
     let res: Response;
@@ -44,11 +50,9 @@ export class MistralChatProvider implements ChatProvider {
       throw new ChatProviderError(this.name, `HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
 
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const text = data.choices?.[0]?.message?.content?.trim();
-    if (!text) throw new ChatProviderError(this.name, 'response contained no message content');
+    const data = (await res.json()) as OpenAiChatResponse;
+    const text = extractOpenAiText(data);
+    if (!text) throw new ChatProviderError(this.name, explainEmptyOpenAiResponse(data));
     return text;
   }
 }

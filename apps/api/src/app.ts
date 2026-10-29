@@ -80,6 +80,7 @@ import {
 import { SubscriptionService } from './modules/subscription/subscription.service.js';
 import { subscriptionRoutes } from './modules/subscription/subscription.routes.js';
 import { BdappsClient } from './infrastructure/bdapps/bdapps.client.js';
+import { collectAiConfigWarnings, readEnv } from './modules/ai/ai-config.js';
 
 export interface AppOptions {
   subscriberRepo?: ISubscriberRepository;
@@ -215,37 +216,41 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const dietPlanService = new DietPlanService(dietPlanRepo, profileService, foodService);
   const progressService = new ProgressService(weightLogRepo, profileService, foodLogService);
 
-  // AI meal-scan providers — each one only gets registered if BOTH its API
-  // key and model name are actually configured. No default model name is
-  // ever hardcoded (see providers/*.ts for why): an unconfigured provider
-  // is silently skipped from the fallback chain rather than crashing the
-  // whole feature, which is exactly what lets more providers get added
-  // later just by setting env vars, nothing else.
+  // AI providers — each one only gets registered if BOTH its API key and
+  // model name are actually configured. No default model name is ever
+  // hardcoded (see providers/*.ts for why): an unconfigured provider is
+  // skipped from the fallback chain rather than crashing the whole feature.
+  // Values go through readEnv() so stray quotes / whitespace in .env don't
+  // silently turn a valid key into a 401.
+  if (!options.visionProviders || !options.chatProviders) {
+    for (const warning of collectAiConfigWarnings()) {
+      console.warn(`⚠️  [ai/config] ${warning}`);
+    }
+  }
+
   const visionProviders: VisionProvider[] = options.visionProviders ?? [];
   if (!options.visionProviders) {
-    if (process.env.GEMINI_API_KEY && process.env.GEMINI_VISION_MODEL) {
-      visionProviders.push(
-        new GeminiVisionProvider(process.env.GEMINI_API_KEY, process.env.GEMINI_VISION_MODEL),
-      );
+    const geminiKey = readEnv('GEMINI_API_KEY');
+    const geminiModel = readEnv('GEMINI_VISION_MODEL');
+    if (geminiKey && geminiModel) {
+      visionProviders.push(new GeminiVisionProvider(geminiKey, geminiModel));
     }
-    if (process.env.GROQ_API_KEY && process.env.GROQ_VISION_MODEL) {
-      visionProviders.push(
-        new GroqVisionProvider(process.env.GROQ_API_KEY, process.env.GROQ_VISION_MODEL),
-      );
+    const groqKey = readEnv('GROQ_API_KEY');
+    const groqModel = readEnv('GROQ_VISION_MODEL');
+    if (groqKey && groqModel) {
+      visionProviders.push(new GroqVisionProvider(groqKey, groqModel));
     }
-    if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_VISION_MODEL) {
-      visionProviders.push(
-        new OpenRouterVisionProvider(
-          process.env.OPENROUTER_API_KEY,
-          process.env.OPENROUTER_VISION_MODEL,
-        ),
-      );
+    const orKey = readEnv('OPENROUTER_API_KEY');
+    const orModel = readEnv('OPENROUTER_VISION_MODEL');
+    if (orKey && orModel) {
+      visionProviders.push(new OpenRouterVisionProvider(orKey, orModel));
     }
     if (visionProviders.length === 0) {
       console.warn(
         '\n⚠️  No AI vision providers configured — /api/ai/scan-meal will always report\n' +
           '    "all_providers_failed". Set at least one of GEMINI_API_KEY+GEMINI_VISION_MODEL,\n' +
-          '    GROQ_API_KEY+GROQ_VISION_MODEL, or OPENROUTER_API_KEY+OPENROUTER_VISION_MODEL.\n',
+          '    GROQ_API_KEY+GROQ_VISION_MODEL, or OPENROUTER_API_KEY+OPENROUTER_VISION_MODEL\n' +
+          '    in apps/api/.env, then run `pnpm ai:check`.\n',
       );
     }
   }
@@ -253,52 +258,76 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const aiService = options.aiService || new AiService(visionGateway, mealScanRepo, foodService);
 
   // Nutrition chatbot — multi-provider fallback chain: Gemini → Groq → OpenRouter → Mistral.
-  // Each provider is registered only if its API key AND model name are configured.
   // The chat route stays active as long as at least one provider is configured.
   // When a provider hits its rate limit or fails 3 times in a row, the gateway
   // automatically skips it (circuit open) and falls through to the next one.
   const chatProviders: ChatProvider[] = options.chatProviders ?? [];
   if (!options.chatProviders) {
-    if (process.env.GEMINI_API_KEY && process.env.GEMINI_CHAT_MODEL) {
-      chatProviders.push(
-        new GeminiChatProvider(process.env.GEMINI_API_KEY, process.env.GEMINI_CHAT_MODEL),
-      );
+    const geminiKey = readEnv('GEMINI_API_KEY');
+    const geminiModel = readEnv('GEMINI_CHAT_MODEL');
+    if (geminiKey && geminiModel) {
+      chatProviders.push(new GeminiChatProvider(geminiKey, geminiModel));
     }
-    if (process.env.GROQ_API_KEY && process.env.GROQ_CHAT_MODEL) {
-      chatProviders.push(
-        new GroqChatProvider(process.env.GROQ_API_KEY, process.env.GROQ_CHAT_MODEL),
-      );
+    const groqKey = readEnv('GROQ_API_KEY');
+    const groqModel = readEnv('GROQ_CHAT_MODEL');
+    if (groqKey && groqModel) {
+      chatProviders.push(new GroqChatProvider(groqKey, groqModel));
     }
-    if (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_CHAT_MODEL) {
-      chatProviders.push(
-        new OpenRouterChatProvider(
-          process.env.OPENROUTER_API_KEY,
-          process.env.OPENROUTER_CHAT_MODEL,
-        ),
-      );
+    const orKey = readEnv('OPENROUTER_API_KEY');
+    const orModel = readEnv('OPENROUTER_CHAT_MODEL');
+    if (orKey && orModel) {
+      chatProviders.push(new OpenRouterChatProvider(orKey, orModel));
     }
-    if (process.env.MISTRAL_API_KEY && process.env.MISTRAL_CHAT_MODEL) {
-      chatProviders.push(
-        new MistralChatProvider(process.env.MISTRAL_API_KEY, process.env.MISTRAL_CHAT_MODEL),
-      );
+    const mistralKey = readEnv('MISTRAL_API_KEY');
+    const mistralModel = readEnv('MISTRAL_CHAT_MODEL');
+    if (mistralKey && mistralModel) {
+      chatProviders.push(new MistralChatProvider(mistralKey, mistralModel));
     }
     if (chatProviders.length === 0) {
       console.warn(
         '\n⚠️  No chat providers configured — /api/ai/chat will return 503.\n' +
-          '    Set at least one of:\n' +
+          '    Set at least one of (in apps/api/.env):\n' +
           '      GEMINI_API_KEY + GEMINI_CHAT_MODEL\n' +
           '      GROQ_API_KEY + GROQ_CHAT_MODEL\n' +
           '      OPENROUTER_API_KEY + OPENROUTER_CHAT_MODEL\n' +
-          '      MISTRAL_API_KEY + MISTRAL_CHAT_MODEL\n',
+          '      MISTRAL_API_KEY + MISTRAL_CHAT_MODEL\n' +
+          '    then run `pnpm ai:check` to verify them.\n',
       );
     }
   }
+  // eslint-disable-next-line no-console
+  console.log(
+    `[ai] chat providers: ${chatProviders.map((p) => p.name).join(' → ') || 'none'} | ` +
+      `meal-scan providers: ${visionProviders.map((p) => p.name).join(' → ') || 'none'}`,
+  );
   const chatGateway = new ChatGateway(chatProviders);
   const chatService =
     options.chatService ||
     (chatProviders.length > 0
       ? new ChatService(chatGateway, profileService, foodLogService, dietPlanService)
       : null);
+
+  // Safe-to-expose diagnostics: which providers are live and which model each
+  // uses (never keys). Recent provider errors are only included outside
+  // production, since they can contain upstream response text.
+  app.get('/api/ai/status', async () => {
+    const includeErrors = process.env.NODE_ENV !== 'production';
+    return {
+      chat: {
+        enabled: chatProviders.length > 0,
+        providers: chatProviders.map((p) => p.name),
+        circuits: chatGateway.getCircuitStates(),
+        ...(includeErrors ? { lastErrors: chatGateway.getLastErrors() } : {}),
+      },
+      mealScan: {
+        enabled: visionProviders.length > 0,
+        providers: visionProviders.map((p) => p.name),
+        circuits: visionGateway.getCircuitStates(),
+        ...(includeErrors ? { lastErrors: visionGateway.getLastErrors() } : {}),
+      },
+      configWarnings: collectAiConfigWarnings(),
+    };
+  });
 
   const bdappsClient = options.bdappsClient || new BdappsClient();
   const subscriptionService =

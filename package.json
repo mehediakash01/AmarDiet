@@ -22,6 +22,7 @@
     "db:import": "tsx scripts/import-foods.ts",
     "db:backup": "tsx scripts/backup-db.ts",
     "db:setup": "pnpm db:migrate && pnpm db:seed",
+    "ai:check": "pnpm --filter @thali/api ai:check",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

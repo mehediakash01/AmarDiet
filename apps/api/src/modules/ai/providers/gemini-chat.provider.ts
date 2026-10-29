@@ -1,10 +1,17 @@
 ﻿import { ChatProviderError, type ChatProvider, type ChatProviderMessage } from './chat-types.js';
+import {
+  explainEmptyGeminiResponse,
+  extractGeminiText,
+  type GeminiGenerateContentResponse,
+} from './gemini-response.js';
+import { normalizeGeminiModel } from '../ai-config.js';
 
 /**
  * Model name from GEMINI_CHAT_MODEL — no default hardcoded.
- * Use a text-only model (e.g. gemini-2.0-flash or gemini-1.5-flash),
- * NOT the same model as GEMINI_VISION_MODEL unless it is also text-capable.
- * Check https://ai.google.dev/gemini-api/docs/models for current names.
+ * Any current Flash / Flash-Lite model works (they are multimodal, so the
+ * same name can be used for GEMINI_VISION_MODEL too). Older names such as
+ * gemini-1.5-flash and gemini-2.0-flash are shut down and return 404.
+ * Run `pnpm ai:check` to list the models your key can actually use.
  */
 export class GeminiChatProvider implements ChatProvider {
   readonly name = 'gemini';
@@ -15,7 +22,8 @@ export class GeminiChatProvider implements ChatProvider {
   ) {}
 
   async chat(systemPrompt: string, messages: ChatProviderMessage[]): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+    // Key goes in a header, not the URL, so it can never leak into logs.
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${normalizeGeminiModel(this.model)}:generateContent`;
 
     const contents = messages.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -26,11 +34,14 @@ export class GeminiChatProvider implements ChatProvider {
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.apiKey },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents,
-          generationConfig: { temperature: 0.7, maxOutputTokens: 800 },
+          // Thinking tokens count against maxOutputTokens on current Gemini
+          // models; 800 could be consumed entirely by thinking, leaving an
+          // empty reply. Keep generous headroom.
+          generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
         }),
       });
     } catch (e) {
@@ -42,11 +53,9 @@ export class GeminiChatProvider implements ChatProvider {
       throw new ChatProviderError(this.name, `HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
 
-    const data = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!text) throw new ChatProviderError(this.name, 'response contained no text');
+    const data = (await res.json()) as GeminiGenerateContentResponse;
+    const text = extractGeminiText(data);
+    if (!text) throw new ChatProviderError(this.name, explainEmptyGeminiResponse(data));
     return text;
   }
 }
