@@ -8,12 +8,16 @@ import type {
   GroceryList,
   MealSlot,
   NutritionTargets,
+  ProgressSummary,
   UserProfile,
   WaterLog,
+  WeightLog,
 } from '@thali/types';
+import { LogWeightSchema } from '@thali/schemas';
 import { db, type LocalFoodLogEntry } from '../db/db';
 import { syncEngine } from '../sync/syncEngine';
 import { getOrCreateSubscriberId, getApiBaseUrl } from '../identity/subscriberId';
+import { normalizeWeightLogs } from '../weight';
 import {
   calculateBMR,
   calculateTDEE,
@@ -81,6 +85,7 @@ export interface NutritionState {
   planError: string | null;
   isScanModalOpen: boolean;
   isQuickAddOpen: boolean;
+  isWeightSheetOpen: boolean;
   // Which tab of the dashboard water/fasting card is showing. Lives in the store
   // (not component state) so the Quick Add menu can open the card on Fasting.
   hydrationTab: 'water' | 'fasting';
@@ -100,6 +105,8 @@ export interface NutritionState {
   closeMealScan: () => void;
   openQuickAdd: () => void;
   closeQuickAdd: () => void;
+  openWeightSheet: () => void;
+  closeWeightSheet: () => void;
   setHydrationTab: (tab: 'water' | 'fasting') => void;
   loadProfile: () => Promise<void>;
   loadSubscription: () => Promise<void>;
@@ -133,6 +140,16 @@ export interface NutritionState {
   fastingSession: FastingSession | null;
   isHydrationLoading: boolean;
   loadHydration: (date?: string) => Promise<void>;
+  // Weight history (real entries only, oldest -> newest, one per day) and the
+  // weekly log summary, both from GET /api/progress/:id. Shared by the Progress
+  // page and the Quick Add weight sheet.
+  weightLogs: WeightLog[];
+  weeklyAdherence: ProgressSummary['weeklyAdherence'] | null;
+  loadWeightHistory: () => Promise<void>;
+  logWeight: (
+    weight_kg: number,
+    loggedOn: string,
+  ) => Promise<{ ok: true; log: WeightLog } | { ok: false; error: string }>;
   logWater: (delta_ml: number) => Promise<void>;
   updateFasting: (session: {
     mode: FastingSession['mode'];
@@ -184,6 +201,9 @@ function sumNutr(items: CalculatedNutrition[]): CalculatedNutrition {
   return res;
 }
 
+// Incremented on every weight-history request; see loadWeightHistory.
+let weightLoadSeq = 0;
+
 export const useNutritionStore = create<NutritionState>((set, get) => ({
   subscriberId: '',
   isSubscriberReady: false,
@@ -208,6 +228,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   isHydrationLoading: false,
   isScanModalOpen: false,
   isQuickAddOpen: false,
+  isWeightSheetOpen: false,
+  weightLogs: [],
+  weeklyAdherence: null,
   hydrationTab: 'water',
   isAdmin: false,
   adminKey: null,
@@ -301,6 +324,14 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   closeQuickAdd: () => {
     set({ isQuickAddOpen: false });
+  },
+
+  openWeightSheet: () => {
+    set({ isWeightSheetOpen: true });
+  },
+
+  closeWeightSheet: () => {
+    set({ isWeightSheetOpen: false });
   },
 
   setHydrationTab: (tab) => {
@@ -715,6 +746,59 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       console.error('Failed to load hydration:', e);
     }
     set({ isHydrationLoading: false });
+  },
+
+  loadWeightHistory: async () => {
+    const { subscriberId } = get();
+    if (!subscriberId) return;
+    // If two loads overlap (e.g. Quick Add opening while the Progress page loads),
+    // only the newest response may be applied, so a slow old one can't overwrite it.
+    const seq = ++weightLoadSeq;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/progress/${subscriberId}`);
+      if (!res.ok || seq !== weightLoadSeq) return;
+      const data: Partial<ProgressSummary> = await res.json();
+      set({
+        weightLogs: normalizeWeightLogs(Array.isArray(data.weightHistory) ? data.weightHistory : []),
+        weeklyAdherence: data.weeklyAdherence ?? null,
+      });
+    } catch (e) {
+      // Offline: keep whatever we already have.
+      console.error('Failed to load weight history:', e);
+    }
+  },
+
+  logWeight: async (weight_kg: number, loggedOn: string) => {
+    const { subscriberId } = get();
+    const parsed = LogWeightSchema.safeParse({ subscriberId, weight_kg, loggedOn });
+    if (!parsed.success) {
+      return { ok: false as const, error: parsed.error.errors[0]?.message ?? 'Please check the weight and date.' };
+    }
+
+    // Not optimistic on purpose: the sheet stays open with the user's input if
+    // this fails, so we only report success once the server has the entry.
+    let saved: WeightLog;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/progress/weight`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed.data),
+      });
+      if (!res.ok) {
+        return { ok: false as const, error: 'The server could not save your weight. Please try again.' };
+      }
+      saved = await res.json();
+    } catch {
+      return { ok: false as const, error: 'Could not reach the server. Check your connection and try again.' };
+    }
+
+    // Show it immediately, then refresh from the server (which also updates the
+    // weekly log summary). If the refresh fails, the entry above is still there.
+    weightLoadSeq++; // invalidate any older in-flight load
+    set((state) => ({ weightLogs: normalizeWeightLogs([...state.weightLogs, saved]) }));
+    await get().loadWeightHistory();
+    const latest = get().weightLogs.find((l) => l.loggedOn === loggedOn) ?? saved;
+    return { ok: true as const, log: latest };
   },
 
   logWater: async (delta_ml: number) => {

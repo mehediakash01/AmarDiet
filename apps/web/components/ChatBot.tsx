@@ -27,6 +27,7 @@ export function ChatBot() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const subscriberId = useNutritionStore((s) => s.subscriberId);
   const isQuickAddOpen = useNutritionStore((s) => s.isQuickAddOpen);
+  const isWeightSheetOpen = useNutritionStore((s) => s.isWeightSheetOpen);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -126,8 +127,8 @@ export function ChatBot() {
     }
   };
 
-  // The floating button would sit on top of the Quick Add sheet.
-  if (isQuickAddOpen) return null;
+  // The floating button would sit on top of the Quick Add and weight sheets.
+  if (isQuickAddOpen || isWeightSheetOpen) return null;
 
   return (
     <>

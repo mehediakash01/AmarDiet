@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   Scale,
   CheckCircle2,
@@ -9,7 +9,6 @@ import {
   TrendingUp,
   Plus,
   Calendar,
-  X,
   Flame,
   Target,
   BarChart2,
@@ -17,7 +16,6 @@ import {
 } from 'lucide-react';
 import type { WeightLog } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
-import { getApiBaseUrl } from '@/lib/identity/subscriberId';
 import HealthReportExport from '@/components/HealthReportExport';
 
 // ─── SVG Weight Trend Chart ───────────────────────────────────────────────────
@@ -186,82 +184,6 @@ function MacroBar({
   );
 }
 
-// ─── Quick-log Modal ───────────────────────────────────────────────────────────
-function QuickLogModal({
-  onClose,
-  onLog,
-}: {
-  onClose: () => void;
-  onLog: (weight: number, date: string) => void;
-}) {
-  const [weight, setWeight] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = parseFloat(weight);
-    if (isNaN(val) || val <= 0) return;
-    onLog(val, date);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-sm">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <div className="flex items-center space-x-2">
-            <Scale className="w-4 h-4 text-cyan-400" />
-            <h2 className="font-bold text-base text-zinc-100">Log Weight</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-zinc-800 text-zinc-400 flex items-center justify-center transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-400 block">Weight (kg)</label>
-            <input
-              type="number"
-              step="0.1"
-              min="20"
-              max="300"
-              placeholder="e.g. 72.5"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              autoFocus
-              className="w-full px-3 py-2.5 border border-zinc-700 rounded-xl bg-zinc-800 text-zinc-100 text-sm focus:outline-none focus:border-cyan-500 text-center text-xl font-tabular font-bold"
-              required
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-400 block">Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-2 border border-zinc-700 rounded-xl bg-zinc-800 text-zinc-100 text-sm focus:outline-none focus:border-cyan-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!weight}
-            className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 rounded-xl text-sm font-bold transition disabled:opacity-50 flex items-center justify-center space-x-2 min-h-[44px]"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Log Weight</span>
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ProgressPage() {
   const subscriberId = useNutritionStore((s) => s.subscriberId);
@@ -271,85 +193,31 @@ export default function ProgressPage() {
   const waterLog = useNutritionStore((s) => s.waterLog);
   const fastingSession = useNutritionStore((s) => s.fastingSession);
 
-  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [serverAdherence, setServerAdherence] = useState<{
-    days: Array<{ date: string; dayLabel: string; isLogged: boolean; adherent: boolean }>;
-    adherencePercent: number;
-    daysLoggedCount: number;
-  } | null>(null);
-
-  const fetchProgress = async () => {
-    if (!subscriberId) return;
-    try {
-      const res = await fetch(`${getApiBaseUrl()}/api/progress/${subscriberId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.weightHistory && Array.isArray(data.weightHistory) && data.weightHistory.length > 0) {
-          const sorted = [...data.weightHistory].sort((a, b) =>
-            a.loggedOn > b.loggedOn ? 1 : -1,
-          );
-          setWeightLogs(sorted);
-        } else if (profile?.weight_kg) {
-          setWeightLogs([
-            {
-              id: 'init_1',
-              subscriberId,
-              weight_kg: profile.weight_kg,
-              loggedOn: new Date().toISOString().split('T')[0],
-              createdAt: new Date().toISOString(),
-            },
-          ]);
-        }
-
-        if (data.weeklyAdherence) {
-          setServerAdherence(data.weeklyAdherence);
-        }
-      }
-    } catch {
-      // Offline fallback: keep local / profile state
-      if (profile?.weight_kg && weightLogs.length === 0) {
-        setWeightLogs([
-          {
-            id: 'init_1',
-            subscriberId,
-            weight_kg: profile.weight_kg,
-            loggedOn: new Date().toISOString().split('T')[0],
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-      }
-    }
-  };
+  // Weight history and the weekly log summary live in the store, so this page and
+  // the Quick Add weight sheet always show the same data.
+  const storedWeightLogs = useNutritionStore((s) => s.weightLogs);
+  const serverAdherence = useNutritionStore((s) => s.weeklyAdherence);
+  const loadWeightHistory = useNutritionStore((s) => s.loadWeightHistory);
+  const openWeightSheet = useNutritionStore((s) => s.openWeightSheet);
 
   useEffect(() => {
-    fetchProgress();
-  }, [subscriberId, profile?.weight_kg]);
+    loadWeightHistory();
+  }, [subscriberId, loadWeightHistory]);
 
-  const handleLog = async (weight: number, date: string) => {
-    const newEntry: WeightLog = {
-      id: `wlog_${Date.now()}`,
-      subscriberId,
-      weight_kg: weight,
-      loggedOn: date,
-      createdAt: new Date().toISOString(),
-    };
-    setWeightLogs((prev) =>
-      [...prev.filter((l) => l.loggedOn !== date), newEntry].sort((a, b) =>
-        a.loggedOn > b.loggedOn ? 1 : -1,
-      ),
-    );
-    try {
-      await fetch(`${getApiBaseUrl()}/api/progress/weight`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriberId, weight_kg: weight, loggedOn: date }),
-      });
-      await fetchProgress();
-    } catch {
-      // offline — already stored locally
-    }
-  };
+  // Before the first weight is logged, show the profile weight as the starting point.
+  const profileWeightKg = profile?.weight_kg;
+  const weightLogs = useMemo<WeightLog[]>(() => {
+    if (storedWeightLogs.length > 0 || !profileWeightKg) return storedWeightLogs;
+    return [
+      {
+        id: 'profile_weight',
+        subscriberId,
+        weight_kg: profileWeightKg,
+        loggedOn: new Date().toISOString().split('T')[0],
+        createdAt: new Date().toISOString(),
+      },
+    ];
+  }, [storedWeightLogs, profileWeightKg, subscriberId]);
 
   const startingWeight = weightLogs.length > 0 ? weightLogs[0].weight_kg : profile?.weight_kg ?? 70;
   const currentWeight =
@@ -410,10 +278,6 @@ export default function ProgressPage() {
 
   return (
     <div className="space-y-6">
-      {showModal && (
-        <QuickLogModal onClose={() => setShowModal(false)} onLog={handleLog} />
-      )}
-
       {/* Page Header */}
       <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
         <div>
@@ -436,7 +300,7 @@ export default function ProgressPage() {
             adherencePercent={adherencePercent}
           />
           <button
-            onClick={() => setShowModal(true)}
+            onClick={openWeightSheet}
             className="flex items-center space-x-1.5 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-sm font-bold rounded-xl transition min-h-[44px]"
           >
             <Plus className="w-4 h-4" />

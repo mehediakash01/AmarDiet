@@ -5,6 +5,7 @@ import { Navbar } from '@/components/Navbar';
 import { FoodSearchModal } from '@/features/food-search/FoodSearchModal';
 import { MealScanModal } from '@/features/meal-scan/MealScanModal';
 import { QuickAddMenu } from '@/components/QuickAddMenu';
+import { WeightLogSheet } from '@/components/WeightLogSheet';
 import { ChatBot } from '@/components/ChatBot';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 
@@ -55,6 +56,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <FoodSearchModal />
       <MealScanModal />
       <QuickAddMenu />
+      <WeightLogSheet />
       <ChatBot />
     </>
   );

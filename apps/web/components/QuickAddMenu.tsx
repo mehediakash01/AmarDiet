@@ -2,11 +2,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Utensils, Camera, Droplets, Timer } from 'lucide-react';
+import { Utensils, Camera, Droplets, Timer, Scale } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { defaultMealSlotForHour } from '@/lib/meal-slot';
 import { getFastingProgress } from '@/lib/fasting';
+import { formatWeightHint } from '@/lib/weight';
 import { ModalSheet } from '@/components/ui/ModalSheet';
 import { useToast } from '@/components/ui/Toast';
 
@@ -58,6 +59,10 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
   const loadHydration = useNutritionStore((s) => s.loadHydration);
   const setHydrationTab = useNutritionStore((s) => s.setHydrationTab);
   const fastingSession = useNutritionStore((s) => s.fastingSession);
+  const weightLogs = useNutritionStore((s) => s.weightLogs);
+  const loadWeightHistory = useNutritionStore((s) => s.loadWeightHistory);
+  const openWeightSheet = useNutritionStore((s) => s.openWeightSheet);
+  const profileWeightKg = useNutritionStore((s) => s.profile?.weight_kg);
   const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
@@ -70,6 +75,11 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     hydrationLoad.current = loadHydration();
   }, [loadHydration]);
+
+  // Refresh weight history so the Weight tile's hint (latest kg and change) is current.
+  useEffect(() => {
+    loadWeightHistory();
+  }, [loadWeightHistory]);
 
   const handleFood = () => {
     onDone();
@@ -96,6 +106,11 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
     );
   };
 
+  const handleWeight = () => {
+    onDone();
+    openWeightSheet();
+  };
+
   // Opens the dashboard's water & fasting card on its Fasting tab.
   const handleFasting = () => {
     onDone();
@@ -117,9 +132,20 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
       ? 'Target reached'
       : `${fasting.elapsedHours}h of ${fasting.targetHours}h`;
 
-  const tiles = [
+  type Tile = {
+    key: string;
+    label: string;
+    hint: string;
+    icon: React.ComponentType<{ className?: string }>;
+    onClick: () => void;
+  };
+
+  const logTiles: Tile[] = [
     { key: 'food', label: 'Food', hint: 'Search & log', icon: Utensils, onClick: handleFood },
     { key: 'scan', label: 'Scan meal', hint: 'AI from photo', icon: Camera, onClick: handleScan },
+  ];
+
+  const trackTiles: Tile[] = [
     {
       key: 'water',
       label: 'Water',
@@ -128,13 +154,38 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
       onClick: handleWater,
     },
     { key: 'fasting', label: 'Fasting', hint: fastingHint, icon: Timer, onClick: handleFasting },
+    {
+      key: 'weight',
+      label: 'Weight',
+      hint: formatWeightHint(weightLogs, profileWeightKg),
+      icon: Scale,
+      onClick: handleWeight,
+    },
   ];
+
+  const renderTile = (t: Tile) => {
+    const Icon = t.icon;
+    return (
+      <button
+        key={t.key}
+        type="button"
+        onClick={t.onClick}
+        className="flex flex-col items-center justify-center gap-2 min-h-[96px] rounded-2xl border border-border bg-zinc-950 p-3 text-center transition-all hover:border-cyan-500/40 hover:bg-zinc-900 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+      >
+        <span className="w-11 h-11 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
+          <Icon className="w-5 h-5" />
+        </span>
+        <span className="text-sm font-semibold text-text-primary leading-tight">{t.label}</span>
+        <span className="text-[11px] text-text-muted leading-tight break-words">{t.hint}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2">
-          Add to meal
+      <div className="space-y-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+          Log food &middot; add to meal
         </p>
         <div className="grid grid-cols-4 gap-2" role="group" aria-label="Meal">
           {MEAL_SLOTS.map((m) => {
@@ -156,26 +207,12 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
             );
           })}
         </div>
+        <div className="grid grid-cols-2 gap-3">{logTiles.map(renderTile)}</div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {tiles.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={t.onClick}
-              className="flex flex-col items-center justify-center gap-2 min-h-[96px] rounded-2xl border border-border bg-zinc-950 p-3 transition-all hover:border-cyan-500/40 hover:bg-zinc-900 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-            >
-              <span className="w-11 h-11 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
-                <Icon className="w-5 h-5" />
-              </span>
-              <span className="text-sm font-semibold text-text-primary leading-tight">{t.label}</span>
-              <span className="text-[11px] text-text-muted leading-tight">{t.hint}</span>
-            </button>
-          );
-        })}
+      <div className="space-y-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Track</p>
+        <div className="grid grid-cols-3 gap-3">{trackTiles.map(renderTile)}</div>
       </div>
     </div>
   );
