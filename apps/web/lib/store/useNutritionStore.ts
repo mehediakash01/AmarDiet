@@ -81,6 +81,9 @@ export interface NutritionState {
   planError: string | null;
   isScanModalOpen: boolean;
   isQuickAddOpen: boolean;
+  // Which tab of the dashboard water/fasting card is showing. Lives in the store
+  // (not component state) so the Quick Add menu can open the card on Fasting.
+  hydrationTab: 'water' | 'fasting';
   isAdmin: boolean;
   adminKey: string | null;
 
@@ -97,6 +100,7 @@ export interface NutritionState {
   closeMealScan: () => void;
   openQuickAdd: () => void;
   closeQuickAdd: () => void;
+  setHydrationTab: (tab: 'water' | 'fasting') => void;
   loadProfile: () => Promise<void>;
   loadSubscription: () => Promise<void>;
   initiateSubscription: (
@@ -204,6 +208,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   isHydrationLoading: false,
   isScanModalOpen: false,
   isQuickAddOpen: false,
+  hydrationTab: 'water',
   isAdmin: false,
   adminKey: null,
 
@@ -296,6 +301,10 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   closeQuickAdd: () => {
     set({ isQuickAddOpen: false });
+  },
+
+  setHydrationTab: (tab) => {
+    set({ hydrationTab: tab });
   },
 
   loadProfile: async () => {

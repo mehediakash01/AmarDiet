@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import type { FastingMode } from '@thali/types';
+import { getFastingProgress } from '@/lib/fasting';
 
 export function WaterTrackerWidget() {
   const waterLog = useNutritionStore((s) => s.waterLog);
@@ -24,7 +25,8 @@ export function WaterTrackerWidget() {
   const logWater = useNutritionStore((s) => s.logWater);
   const updateFasting = useNutritionStore((s) => s.updateFasting);
 
-  const [activeTab, setActiveTab] = useState<'water' | 'fasting'>('water');
+  const activeTab = useNutritionStore((s) => s.hydrationTab);
+  const setActiveTab = useNutritionStore((s) => s.setHydrationTab);
   const [fastingMode, setFastingMode] = useState<FastingMode>('16_8');
   const [now, setNow] = useState(Date.now());
 
@@ -46,20 +48,11 @@ export function WaterTrackerWidget() {
 
   // Fasting calculations
   const isFastingActive = fastingSession?.isActive ?? false;
-  const startTimeMs = fastingSession?.startTime ? new Date(fastingSession.startTime).getTime() : 0;
   const targetHours = fastingSession?.targetHours ?? (fastingMode === '14_10' ? 14 : fastingMode === '18_6' ? 18 : 16);
 
-  let elapsedHours = 0;
-  let remainingMs = 0;
-  let isFastCompleted = false;
-
-  if (isFastingActive && startTimeMs > 0) {
-    const elapsedMs = Math.max(0, now - startTimeMs);
-    elapsedHours = Math.round((elapsedMs / (1000 * 60 * 60)) * 10) / 10;
-    const targetMs = targetHours * 60 * 60 * 1000;
-    remainingMs = Math.max(0, targetMs - elapsedMs);
-    isFastCompleted = elapsedMs >= targetMs;
-  }
+  const fasting = getFastingProgress(fastingSession, now);
+  const { elapsedHours, remainingMs } = fasting;
+  const isFastCompleted = fasting.isCompleted;
 
   const formatCountdown = (ms: number) => {
     const totalMinutes = Math.floor(ms / (1000 * 60));

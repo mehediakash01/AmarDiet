@@ -9,6 +9,7 @@ import { PlateRingChart } from '@/components/PlateRingChart';
 import { BmiSpectrumChart } from '@/components/BmiSpectrumChart';
 import { MealSlotCard } from '@/components/MealSlotCard';
 import { SubscriptionCard } from '@/components/SubscriptionCard';
+import { WaterTrackerWidget } from '@/components/WaterTrackerWidget';
 import { useToast } from '@/components/ui/Toast';
 
 export default function DashboardPage() {
@@ -27,6 +28,14 @@ export default function DashboardPage() {
     loadProfile();
     loadLogsForDate();
   }, [loadProfile, loadLogsForDate]);
+
+  // Arriving from the Quick Add menu's "Fasting" tile (or a #hydration link):
+  // bring the water & fasting card into view.
+  useEffect(() => {
+    if (window.location.hash === '#hydration') {
+      document.getElementById('hydration')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   // Aggregate consumed nutrition across all slots
   const consumedTotals = useMemo(() => {
@@ -94,6 +103,11 @@ export default function DashboardPage() {
           {nutrition && (
             <PlateRingChart consumed={consumedTotals} targets={nutrition} />
           )}
+
+          {/* Water & fasting tracker (scroll-mt clears the sticky header) */}
+          <div id="hydration" className="scroll-mt-20">
+            <WaterTrackerWidget />
+          </div>
 
           {/* Quick Anthropometric & Target Breakdown */}
           {profile && nutrition && (
