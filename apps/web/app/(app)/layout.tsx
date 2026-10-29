@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { FoodSearchModal } from '@/features/food-search/FoodSearchModal';
 import { MealScanModal } from '@/features/meal-scan/MealScanModal';
+import { QuickAddMenu } from '@/components/QuickAddMenu';
 import { ChatBot } from '@/components/ChatBot';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 
@@ -53,6 +54,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8 pb-24 md:pb-8">{children}</main>
       <FoodSearchModal />
       <MealScanModal />
+      <QuickAddMenu />
       <ChatBot />
     </>
   );

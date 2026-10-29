@@ -26,6 +26,7 @@ export function ChatBot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const subscriberId = useNutritionStore((s) => s.subscriberId);
+  const isQuickAddOpen = useNutritionStore((s) => s.isQuickAddOpen);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -124,6 +125,9 @@ export function ChatBot() {
       void sendMessage();
     }
   };
+
+  // The floating button would sit on top of the Quick Add sheet.
+  if (isQuickAddOpen) return null;
 
   return (
     <>

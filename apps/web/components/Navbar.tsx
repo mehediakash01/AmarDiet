@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Settings,
   Camera,
+  Plus,
 } from 'lucide-react';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 
@@ -19,6 +20,7 @@ export function Navbar() {
   const pathname = usePathname();
   const isAdmin = useNutritionStore((s) => s.isAdmin);
   const openMealScan = useNutritionStore((s) => s.openMealScan);
+  const openQuickAdd = useNutritionStore((s) => s.openQuickAdd);
 
   // Core navigation links (Admin is conditionally rendered only for verified admins)
   const navLinks = [
@@ -131,17 +133,18 @@ export function Navbar() {
           <span className="text-[10px] tracking-tight">Diary</span>
         </Link>
 
-        {/* 3. Center Raised Scan Action */}
+        {/* 3. Center Raised Quick-Add Action (opens the "+" menu) */}
         <div className="flex flex-col items-center justify-center px-1">
           <button
             type="button"
-            onClick={() => openMealScan('lunch')}
-            aria-label="Scan food with camera"
+            onClick={openQuickAdd}
+            aria-label="Quick add: log food, scan a meal, or add water"
+            aria-haspopup="dialog"
             className="w-12 h-12 -mt-4 rounded-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 flex items-center justify-center shadow-lg shadow-cyan-500/30 transition-transform active:scale-95 border-2 border-zinc-950"
           >
-            <Camera className="w-5 h-5" />
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
           </button>
-          <span className="text-[10px] text-text-secondary font-medium mt-0.5">Scan</span>
+          <span className="text-[10px] text-text-secondary font-medium mt-0.5">Add</span>
         </div>
 
         {/* 4. Plan */}

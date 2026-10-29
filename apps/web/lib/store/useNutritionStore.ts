@@ -80,6 +80,7 @@ export interface NutritionState {
   isLoading: boolean;
   planError: string | null;
   isScanModalOpen: boolean;
+  isQuickAddOpen: boolean;
   isAdmin: boolean;
   adminKey: string | null;
 
@@ -94,6 +95,8 @@ export interface NutritionState {
   closeFoodSearch: () => void;
   openMealScan: (slot: MealSlot) => void;
   closeMealScan: () => void;
+  openQuickAdd: () => void;
+  closeQuickAdd: () => void;
   loadProfile: () => Promise<void>;
   loadSubscription: () => Promise<void>;
   initiateSubscription: (
@@ -200,6 +203,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   fastingSession: null,
   isHydrationLoading: false,
   isScanModalOpen: false,
+  isQuickAddOpen: false,
   isAdmin: false,
   adminKey: null,
 
@@ -284,6 +288,14 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   closeMealScan: () => {
     set({ isScanModalOpen: false });
+  },
+
+  openQuickAdd: () => {
+    set({ isQuickAddOpen: true });
+  },
+
+  closeQuickAdd: () => {
+    set({ isQuickAddOpen: false });
   },
 
   loadProfile: async () => {

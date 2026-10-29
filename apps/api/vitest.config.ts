@@ -8,6 +8,7 @@ export default defineConfig({
       'src/**/*.test.ts',
       '../../tests/integration/**/*.test.ts',
       '../../tests/unit/ai-gateway/**/*.test.ts',
+      '../../tests/unit/web/**/*.test.ts',
     ],
   },
 });
