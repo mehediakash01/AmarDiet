@@ -150,6 +150,71 @@ describe('API Integration: Food Search & Food Logging Modules', () => {
       expect(entry.calculatedNutrition.fat).toBe(0.6); // 0.3 * 2
     });
 
+    it('POST /api/food-logs accepts a quick calorie entry without a catalog food', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/food-logs',
+        payload: {
+          subscriberId,
+          loggedOn: logDate,
+          mealSlot: 'snack',
+          foodId: 'quick_calories',
+          foodName: 'Quick calories',
+          quantity: 275,
+          unit: 'kcal',
+          customNutrition: {
+            calories: 275,
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            fiber: 0,
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const entry = JSON.parse(res.body);
+      expect(entry.foodId).toBe('quick_calories');
+      expect(entry.foodName).toBe('Quick calories');
+      expect(entry.quantity).toBe(275);
+      expect(entry.unit).toBe('kcal');
+      expect(entry.calculatedNutrition.calories).toBe(275);
+
+      const diaryRes = await app.inject({
+        method: 'GET',
+        url: `/api/food-logs?subscriberId=${subscriberId}&date=${logDate}`,
+      });
+      const diary = JSON.parse(diaryRes.body);
+      expect(diary.meals.snack.items).toHaveLength(1);
+      expect(diary.meals.snack.subtotal.calories).toBe(275);
+      expect(diary.totals.calories).toBe(275);
+    });
+
+    it('POST /api/food-logs rejects custom nutrition on catalog foods', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/food-logs',
+        payload: {
+          subscriberId,
+          loggedOn: logDate,
+          mealSlot: 'lunch',
+          foodId: 'food_bengali_sada_bhat',
+          quantity: 100,
+          unit: 'g',
+          customNutrition: {
+            calories: 1,
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            fiber: 0,
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toContain('customNutrition');
+    });
+
     it('logs foods across all 4 meal slots and validates daily totals against deterministic math', async () => {
       // 1. Breakfast: Rolled oats 50g (389 kcal/100g -> 194.5 kcal) + Boiled Egg 50g (155 kcal/100g -> 77.5 kcal)
       await app.inject({

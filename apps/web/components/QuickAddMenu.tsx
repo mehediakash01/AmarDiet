@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Utensils, Camera, Droplets, Timer, Scale, Dumbbell } from 'lucide-react';
+import { Utensils, Camera, Droplets, Timer, Scale, Dumbbell, Flame } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { defaultMealSlotForHour } from '@/lib/meal-slot';
@@ -50,6 +50,7 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
   const [slot, setSlot] = useState<MealSlot>(() => defaultMealSlotForHour(new Date().getHours()));
   const openFoodSearch = useNutritionStore((s) => s.openFoodSearch);
   const openMealScan = useNutritionStore((s) => s.openMealScan);
+  const openQuickCalories = useNutritionStore((s) => s.openQuickCalories);
   const logWater = useNutritionStore((s) => s.logWater);
   const loadHydration = useNutritionStore((s) => s.loadHydration);
   const setHydrationTab = useNutritionStore((s) => s.setHydrationTab);
@@ -93,6 +94,11 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
   const handleScan = () => {
     onDone();
     openMealScan(slot);
+  };
+
+  const handleQuickCalories = () => {
+    onDone();
+    openQuickCalories(slot);
   };
 
   const handleWater = async () => {
@@ -153,6 +159,13 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
 
   const logTiles: Tile[] = [
     { key: 'food', label: 'Food', hint: 'Search & log', icon: Utensils, onClick: handleFood },
+    {
+      key: 'calories',
+      label: 'Calories',
+      hint: 'Quick kcal',
+      icon: Flame,
+      onClick: handleQuickCalories,
+    },
     { key: 'scan', label: 'Scan meal', hint: 'AI from photo', icon: Camera, onClick: handleScan },
     {
       key: 'exercise',
@@ -227,7 +240,7 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
             );
           })}
         </div>
-        <div className="grid grid-cols-3 gap-3">{logTiles.map(renderTile)}</div>
+        <div className="grid grid-cols-2 gap-3">{logTiles.map(renderTile)}</div>
       </div>
 
       <div className="space-y-3">

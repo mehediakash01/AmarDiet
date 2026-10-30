@@ -47,7 +47,7 @@ export class HydrationService {
   }
 
   async logWater(input: LogWaterInput): Promise<WaterLog> {
-    let existing = await this.hydrationRepo.getWaterLog(input.subscriberId, input.date);
+    const existing = await this.hydrationRepo.getWaterLog(input.subscriberId, input.date);
     const target_ml = input.target_ml || existing?.target_ml || (await this.computeDailyTarget(input.subscriberId));
 
     const currentAmount = existing ? existing.amount_ml : 0;

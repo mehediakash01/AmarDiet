@@ -156,8 +156,10 @@ export const CreateFoodLogSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'loggedOn must be YYYY-MM-DD format'),
   mealSlot: MealSlotSchema,
   foodId: z.string().min(1, 'foodId is required'),
+  foodName: z.string().min(1).optional(),
   quantity: z.number().positive('quantity must be positive'),
   unit: z.string().min(1, 'unit is required').default('g'),
+  customNutrition: CalculatedNutritionSchema.optional(),
 });
 
 export const PatchFoodLogSchema = z.object({

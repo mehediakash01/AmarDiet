@@ -7,6 +7,7 @@ import type {
   MealSlot,
   MealSlotGroup,
 } from '@thali/types';
+import { QUICK_CALORIE_FOOD_ID } from '@thali/types';
 import type { CreateFoodLogInput, PatchFoodLogInput } from '@thali/schemas';
 import type { FoodService } from '../food/food.service.js';
 import type { IFoodLogRepository } from './food-log.repository.js';
@@ -52,16 +53,23 @@ export class FoodLogService {
   ) {}
 
   async addLogEntry(input: CreateFoodLogInput): Promise<FoodLogEntry> {
-    const food = this.foodService.getFoodById(input.foodId);
-    if (!food) {
+    const isQuickCalorieEntry = input.foodId === QUICK_CALORIE_FOOD_ID;
+
+    if (isQuickCalorieEntry && !input.customNutrition) {
+      throw new Error('customNutrition is required for quick calorie entries');
+    }
+    if (!isQuickCalorieEntry && input.customNutrition) {
+      throw new Error('customNutrition is only supported for quick calorie entries');
+    }
+
+    const food = isQuickCalorieEntry ? null : this.foodService.getFoodById(input.foodId);
+    if (!isQuickCalorieEntry && !food) {
       throw new Error(`Food item with ID "${input.foodId}" not found`);
     }
 
-    const calculatedNutrition = calculateNutritionForFood(
-      food,
-      input.quantity,
-      input.unit,
-    );
+    const calculatedNutrition = isQuickCalorieEntry
+      ? input.customNutrition!
+      : calculateNutritionForFood(food!, input.quantity, input.unit);
 
     const newId = randomUUID();
 
@@ -71,7 +79,7 @@ export class FoodLogService {
       loggedOn: input.loggedOn,
       mealSlot: input.mealSlot,
       foodId: input.foodId,
-      foodName: food.canonicalName,
+      foodName: isQuickCalorieEntry ? (input.foodName ?? 'Quick calories') : food!.canonicalName,
       quantity: input.quantity,
       unit: input.unit,
       calculatedNutrition,

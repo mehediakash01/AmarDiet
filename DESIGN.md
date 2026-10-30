@@ -120,8 +120,27 @@ All motion respects `prefers-reduced-motion` via globals.css.
 
 - Swipe-to-delete on mobile (touch event handler, translateX reveal)
 - Desktop trash button visible on hover
-- Quick-add +50g / +100g pills per food item
+- Quick-add +50g / +100g pills per food item (hidden for quick-calorie entries)
 - Live slot subtotals (calories, P/C/F) in header
+
+### Diary Date Navigation (`app/(app)/tracker/page.tsx`)
+
+- Previous/next-day chevrons plus a native `<input type="date">` overlaid on the visible date label
+- Date input is the tap/click target; the visible label and ISO date stay in sync
+- “Copy day” and “Quick kcal” actions sit below the date row
+
+### `QuickCaloriesSheet` (`components/QuickCaloriesSheet.tsx`)
+
+- Logs calories without choosing a catalog food
+- Quick chips `100 / 200 / 300 / 500`, optional custom kcal, and meal-slot selection
+- Written as a normal `FoodLogEntry` with `foodId = 'quick_calories'` and zero macros
+- Syncs through the same food-log queue; the API accepts `customNutrition` only for this special ID
+
+### `CopyDaySheet` (`components/CopyDaySheet.tsx`)
+
+- Copies all entries from an earlier day into the selected diary date
+- Source must be before the target date; empty source days report an error and keep the sheet open
+- Operates locally through Dexie, then bulk-queues every copied entry for sync
 
 ### `FoodSearchModal` (`features/food-search/FoodSearchModal.tsx`)
 

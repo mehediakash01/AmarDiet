@@ -5,6 +5,8 @@ import { Navbar } from '@/components/Navbar';
 import { FoodSearchModal } from '@/features/food-search/FoodSearchModal';
 import { MealScanModal } from '@/features/meal-scan/MealScanModal';
 import { QuickAddMenu } from '@/components/QuickAddMenu';
+import { QuickCaloriesSheet } from '@/components/QuickCaloriesSheet';
+import { CopyDaySheet } from '@/components/CopyDaySheet';
 import { WeightLogSheet } from '@/components/WeightLogSheet';
 import { ExerciseSheet } from '@/components/ExerciseSheet';
 import { ChatBot } from '@/components/ChatBot';
@@ -22,7 +24,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     });
     // Only run once on mount — initSubscriber itself is stable from the
     // store, and isSubscriberReady flips to true after this resolves.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (error) {
@@ -57,6 +58,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <FoodSearchModal />
       <MealScanModal />
       <QuickAddMenu />
+      <QuickCaloriesSheet />
+      <CopyDaySheet />
       <WeightLogSheet />
       <ExerciseSheet />
       <ChatBot />

@@ -27,6 +27,8 @@ export function ChatBot() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const subscriberId = useNutritionStore((s) => s.subscriberId);
   const isQuickAddOpen = useNutritionStore((s) => s.isQuickAddOpen);
+  const isQuickCaloriesSheetOpen = useNutritionStore((s) => s.isQuickCaloriesSheetOpen);
+  const isCopyDaySheetOpen = useNutritionStore((s) => s.isCopyDaySheetOpen);
   const isWeightSheetOpen = useNutritionStore((s) => s.isWeightSheetOpen);
   const isExerciseSheetOpen = useNutritionStore((s) => s.isExerciseSheetOpen);
 
@@ -128,8 +130,15 @@ export function ChatBot() {
     }
   };
 
-  // The floating button would sit on top of the Quick Add, weight and exercise sheets.
-  if (isQuickAddOpen || isWeightSheetOpen || isExerciseSheetOpen) return null;
+  // The floating button would sit on top of the quick-add and log sheets.
+  if (
+    isQuickAddOpen ||
+    isQuickCaloriesSheetOpen ||
+    isCopyDaySheetOpen ||
+    isWeightSheetOpen ||
+    isExerciseSheetOpen
+  )
+    return null;
 
   return (
     <>

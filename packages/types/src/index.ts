@@ -46,6 +46,8 @@ export type Sex = 'male' | 'female';
 
 export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
+export const QUICK_CALORIE_FOOD_ID = 'quick_calories';
+
 export type CuisinePreference = 'bengali' | 'mixed' | 'western';
 
 export interface Subscriber {

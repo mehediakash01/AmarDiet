@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { getCalorieBalance } from '../../../apps/web/lib/calories';
+import {
+  MAX_QUICK_CALORIES,
+  getCalorieBalance,
+  validateCaloriesInput,
+} from '../../../apps/web/lib/calories';
 
 describe('getCalorieBalance', () => {
   it('returns null when there is no usable budget (no profile)', () => {
@@ -52,5 +56,21 @@ describe('getCalorieBalance', () => {
     expect(b.food).toBe(0);
     expect(b.exercise).toBe(0);
     expect(b.remaining).toBe(2000);
+  });
+});
+
+describe('validateCaloriesInput', () => {
+  it('accepts a positive calorie amount up to the limit', () => {
+    expect(validateCaloriesInput('1')).toBeNull();
+    expect(validateCaloriesInput('275')).toBeNull();
+    expect(validateCaloriesInput(String(MAX_QUICK_CALORIES))).toBeNull();
+  });
+
+  it('rejects empty, non-numeric, zero, negative, and excessive values', () => {
+    expect(validateCaloriesInput('')).toContain('Enter');
+    expect(validateCaloriesInput('abc')).toContain('Enter');
+    expect(validateCaloriesInput('0')).toContain('greater than 0');
+    expect(validateCaloriesInput('-50')).toContain('greater than 0');
+    expect(validateCaloriesInput(String(MAX_QUICK_CALORIES + 1))).toContain('or less');
   });
 });

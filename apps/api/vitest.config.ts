@@ -5,6 +5,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@thali/nutrition-engine': resolve(__dirname, '../../packages/nutrition-engine/src/index.ts'),
+      '@thali/types': resolve(__dirname, '../../packages/types/src/index.ts'),
+      '@thali/schemas': resolve(__dirname, '../../packages/schemas/src/index.ts'),
     },
   },
   test: {

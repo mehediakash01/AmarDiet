@@ -1,4 +1,5 @@
 import { db, type LocalFoodLogEntry, type SyncQueueItem } from '../db/db';
+import { buildFoodLogPayload } from './payload';
 
 export class SyncEngine {
   private isSyncing = false;
@@ -15,16 +16,26 @@ export class SyncEngine {
     action: 'create' | 'update' | 'delete',
     entry: LocalFoodLogEntry,
   ): Promise<void> {
-    const queueItem: SyncQueueItem = {
+    await this.queueFoodLogMutations(action, [entry]);
+  }
+
+  async queueFoodLogMutations(
+    action: 'create' | 'update' | 'delete',
+    entries: LocalFoodLogEntry[],
+  ): Promise<void> {
+    if (entries.length === 0) return;
+
+    const timestamp = new Date().toISOString();
+    const queueItems: SyncQueueItem[] = entries.map((entry) => ({
       id: `${entry.id}_${Date.now()}`,
       entity: 'food_log',
       action,
-      payload: { ...entry },
-      timestamp: new Date().toISOString(),
+      payload: buildFoodLogPayload(entry),
+      timestamp,
       status: 'pending',
-    };
+    }));
 
-    await db.syncQueue.add(queueItem);
+    await db.syncQueue.bulkAdd(queueItems);
     this.triggerSync();
   }
 

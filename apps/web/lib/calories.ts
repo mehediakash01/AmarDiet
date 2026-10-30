@@ -1,5 +1,18 @@
 import { calculateCaloriesRemaining } from '@thali/nutrition-engine';
 
+export const MAX_QUICK_CALORIES = 10000;
+export const QUICK_CALORIE_VALUES = [100, 200, 300, 500] as const;
+
+export function validateCaloriesInput(raw: string): string | null {
+  const value = Number(raw);
+  if (raw.trim() === '' || !Number.isFinite(value)) return 'Enter the calories you ate.';
+  if (value <= 0) return 'Calories must be greater than 0.';
+  if (value > MAX_QUICK_CALORIES) {
+    return `Calories should be ${MAX_QUICK_CALORIES.toLocaleString()} or less.`;
+  }
+  return null;
+}
+
 export interface CalorieBalance {
   /** Whole-kcal inputs, exactly as shown, so the equation on screen always adds up. */
   budget: number;

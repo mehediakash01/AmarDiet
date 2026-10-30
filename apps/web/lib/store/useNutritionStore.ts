@@ -14,6 +14,7 @@ import type {
   WaterLog,
   WeightLog,
 } from '@thali/types';
+import { QUICK_CALORIE_FOOD_ID } from '@thali/types';
 import { LogExerciseSchema, LogWeightSchema } from '@thali/schemas';
 import { db, type LocalFoodLogEntry } from '../db/db';
 import { syncEngine } from '../sync/syncEngine';
@@ -21,6 +22,7 @@ import { getOrCreateSubscriberId, getApiBaseUrl } from '../identity/subscriberId
 import { normalizeWeightLogs } from '../weight';
 import { localDateString } from '../date';
 import { buildWeeklyAdherenceSummaryFromLogs } from '../progress';
+import { copyEntriesToDate } from '../diary';
 import {
   calculateBMR,
   calculateTDEE,
@@ -84,6 +86,9 @@ export interface NutritionState {
   planError: string | null;
   isScanModalOpen: boolean;
   isQuickAddOpen: boolean;
+  isQuickCaloriesSheetOpen: boolean;
+  quickCaloriesSlot: MealSlot;
+  isCopyDaySheetOpen: boolean;
   isWeightSheetOpen: boolean;
   isExerciseSheetOpen: boolean;
   // Which tab of the dashboard water/fasting card is showing. Lives in the store
@@ -105,6 +110,10 @@ export interface NutritionState {
   closeMealScan: () => void;
   openQuickAdd: () => void;
   closeQuickAdd: () => void;
+  openQuickCalories: (slot?: MealSlot) => void;
+  closeQuickCalories: () => void;
+  openCopyDaySheet: () => void;
+  closeCopyDaySheet: () => void;
   openWeightSheet: () => void;
   closeWeightSheet: () => void;
   openExerciseSheet: () => void;
@@ -117,6 +126,8 @@ export interface NutritionState {
   ) => Promise<{ success: boolean; message: string; instruction?: string }>;
   loadLogsForDate: (date?: string) => Promise<void>;
   logFood: (food: FoodItem, quantity: number, unit: string, slot?: MealSlot) => Promise<void>;
+  logQuickCalories: (calories: number, slot?: MealSlot) => Promise<void>;
+  copyDayMeals: (sourceDate: string) => Promise<number>;
   removeFoodLog: (id: string) => Promise<void>;
   updateFoodLog: (id: string, quantity: number, unit?: string) => Promise<void>;
 
@@ -234,6 +245,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   isHydrationLoading: false,
   isScanModalOpen: false,
   isQuickAddOpen: false,
+  isQuickCaloriesSheetOpen: false,
+  quickCaloriesSlot: 'lunch',
+  isCopyDaySheetOpen: false,
   isWeightSheetOpen: false,
   isExerciseSheetOpen: false,
   exerciseLogs: [],
@@ -333,6 +347,25 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   closeQuickAdd: () => {
     set({ isQuickAddOpen: false });
+  },
+
+  openQuickCalories: (slot) => {
+    set({
+      quickCaloriesSlot: slot ?? get().activeMealSlot,
+      isQuickCaloriesSheetOpen: true,
+    });
+  },
+
+  closeQuickCalories: () => {
+    set({ isQuickCaloriesSheetOpen: false });
+  },
+
+  openCopyDaySheet: () => {
+    set({ isCopyDaySheetOpen: true });
+  },
+
+  closeCopyDaySheet: () => {
+    set({ isCopyDaySheetOpen: false });
   },
 
   openWeightSheet: () => {
@@ -490,6 +523,73 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       dailyLogs: [...prev.dailyLogs, newEntry],
       isSearchModalOpen: false,
     }));
+  },
+
+  logQuickCalories: async (calories, slot) => {
+    const state = get();
+    const mealSlot = slot ?? state.activeMealSlot;
+    const kcal = Math.round(calories * 10) / 10;
+
+    const newEntry: LocalFoodLogEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      subscriberId: state.subscriberId,
+      loggedOn: state.selectedDate,
+      mealSlot,
+      foodId: QUICK_CALORIE_FOOD_ID,
+      foodName: 'Quick calories',
+      quantity: kcal,
+      unit: 'kcal',
+      calculatedNutrition: {
+        calories: kcal,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        fiber: 0,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      synced: false,
+    };
+
+    if (typeof window !== 'undefined') {
+      await db.foodLogs.add(newEntry);
+      await syncEngine.queueFoodLogMutation('create', newEntry);
+    }
+
+    set((prev) => ({ dailyLogs: [...prev.dailyLogs, newEntry] }));
+  },
+
+  copyDayMeals: async (sourceDate) => {
+    if (typeof window === 'undefined') return 0;
+
+    const { subscriberId, selectedDate } = get();
+    if (!subscriberId || sourceDate >= selectedDate) return 0;
+
+    const sourceLogs = await db.foodLogs
+      .where('subscriberId')
+      .equals(subscriberId)
+      .filter((entry) => entry.loggedOn === sourceDate)
+      .toArray();
+
+    if (sourceLogs.length === 0) return 0;
+
+    sourceLogs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const timestamp = Date.now();
+    const copies = copyEntriesToDate(
+      sourceLogs,
+      selectedDate,
+      (index) => `log_${timestamp}_${index}_${Math.random().toString(36).substring(2, 7)}`,
+    );
+
+    await db.foodLogs.bulkAdd(copies);
+    await syncEngine.queueFoodLogMutations('create', copies);
+
+    set((prev) => ({
+      dailyLogs:
+        prev.selectedDate === selectedDate ? [...prev.dailyLogs, ...copies] : prev.dailyLogs,
+    }));
+
+    return copies.length;
   },
 
   removeFoodLog: async (id: string) => {

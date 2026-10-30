@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Trash2, ChevronRight } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
+import { QUICK_CALORIE_FOOD_ID } from '@thali/types';
 import type { LocalFoodLogEntry } from '@/lib/db/db';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -191,24 +192,26 @@ function MealItemRow({
         {/* Right: Quick +50g action, Kcal, and Delete Button */}
         <div className="flex items-center space-x-2.5 flex-shrink-0">
           {/* Quick Add Pills */}
-          <div className="flex items-center space-x-1">
-            <button
-              type="button"
-              onClick={() => onQuickAddGrams(50)}
-              title="Add 50g"
-              className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:bg-cyan-950 text-cyan-400 text-[11px] font-semibold border border-border/80 transition-all font-tabular min-h-[36px]"
-            >
-              +50g
-            </button>
-            <button
-              type="button"
-              onClick={() => onQuickAddGrams(100)}
-              title="Add 100g"
-              className="hidden sm:inline-block px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:bg-cyan-950 text-cyan-400 text-[11px] font-semibold border border-border/80 transition-all font-tabular min-h-[36px]"
-            >
-              +100g
-            </button>
-          </div>
+          {item.foodId !== QUICK_CALORIE_FOOD_ID && (
+            <div className="flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={() => onQuickAddGrams(50)}
+                title="Add 50g"
+                className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:bg-cyan-950 text-cyan-400 text-[11px] font-semibold border border-border/80 transition-all font-tabular min-h-[36px]"
+              >
+                +50g
+              </button>
+              <button
+                type="button"
+                onClick={() => onQuickAddGrams(100)}
+                title="Add 100g"
+                className="hidden sm:inline-block px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 active:bg-cyan-950 text-cyan-400 text-[11px] font-semibold border border-border/80 transition-all font-tabular min-h-[36px]"
+              >
+                +100g
+              </button>
+            </div>
+          )}
 
           {/* Calorie Readout */}
           <span className="font-tabular font-bold text-xs sm:text-sm text-text-primary min-w-[58px] text-right">

@@ -147,10 +147,9 @@ export function MealScanModal() {
     setIsLogging(true);
     try {
       for (const row of toLog) {
-        // eslint-disable-next-line no-await-in-loop -- logging sequentially
-        // keeps this simple and matches how the rest of the app logs one
-        // item at a time; these are a handful of items, not worth the
-        // added complexity of a batch endpoint yet.
+        // Logging sequentially keeps this simple and matches how the rest of
+        // the app logs one item at a time; these are a handful of items, not
+        // worth the added complexity of a batch endpoint yet.
         await logFood(row.selectedFood as FoodItem, row.quantity, row.unit, activeMealSlot);
       }
       handleClose();
@@ -222,8 +221,7 @@ export function MealScanModal() {
           {step === 'analyzing' && (
             <div className="p-8 flex flex-col items-center justify-center text-center gap-4">
               {previewUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- local
-                // object URL preview, not worth Next/Image config for this
+                // Local object URL preview; not worth Next/Image config.
                 <img
                   src={previewUrl}
                   alt="Selected meal photo"

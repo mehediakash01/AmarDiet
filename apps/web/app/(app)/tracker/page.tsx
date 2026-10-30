@@ -1,14 +1,26 @@
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, Calendar, Camera, Dumbbell } from 'lucide-react';
+import {
+  Plus,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Camera,
+  Copy,
+  Dumbbell,
+  Flame,
+} from 'lucide-react';
 import type { MealSlot } from '@thali/types';
+import { QUICK_CALORIE_FOOD_ID } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CalorieEquation } from '@/components/CalorieEquation';
 import { useToast } from '@/components/ui/Toast';
 import { sumCaloriesBurned } from '@/lib/exercise';
 import { addDaysToDateString, localDateString } from '@/lib/date';
+import { defaultMealSlotForHour } from '@/lib/meal-slot';
 
 export default function TrackerPage() {
   const selectedDate = useNutritionStore((s) => s.selectedDate);
@@ -17,6 +29,8 @@ export default function TrackerPage() {
   const nutrition = useNutritionStore((s) => s.nutrition);
   const openFoodSearch = useNutritionStore((s) => s.openFoodSearch);
   const openMealScan = useNutritionStore((s) => s.openMealScan);
+  const openCopyDaySheet = useNutritionStore((s) => s.openCopyDaySheet);
+  const openQuickCalories = useNutritionStore((s) => s.openQuickCalories);
   const removeFoodLog = useNutritionStore((s) => s.removeFoodLog);
   const loadLogsForDate = useNutritionStore((s) => s.loadLogsForDate);
   const exerciseLogs = useNutritionStore((s) => s.exerciseLogs);
@@ -88,39 +102,65 @@ export default function TrackerPage() {
   return (
     <div className="space-y-5">
       {/* ── Date Navigation ───────────────────────────────────────────────── */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 sm:p-4 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => changeDate(-1)}
-          className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
-          aria-label="Previous day"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 sm:p-4">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => changeDate(-1)}
+            className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
+            aria-label="Previous day"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
 
-        <div className="flex items-center space-x-2 flex-1 justify-center">
-          <Calendar className="w-4 h-4 text-zinc-500 flex-shrink-0" />
-          <span className="font-bold text-sm text-zinc-100">{dateLabel}</span>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="sr-only"
-            aria-label="Select date"
-          />
-          <span className="text-xs text-zinc-500 font-tabular hidden sm:inline">
-            {selectedDate}
-          </span>
+          <div className="flex items-center space-x-2 flex-1 justify-center min-w-0">
+            <Calendar className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+            <label
+              className="relative flex items-center gap-1 rounded-lg px-2 py-1 cursor-pointer hover:bg-zinc-800/70 focus-within:ring-2 focus-within:ring-cyan-400"
+              title="Change date"
+            >
+              <span className="font-bold text-sm text-zinc-100">{dateLabel}</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                aria-label="Select date"
+              />
+            </label>
+            <span className="text-xs text-zinc-500 font-tabular hidden sm:inline">
+              {selectedDate}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => changeDate(1)}
+            className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
+            aria-label="Next day"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => changeDate(1)}
-          className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
-          aria-label="Next day"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={openCopyDaySheet}
+            className="min-h-[40px] rounded-xl border border-border bg-zinc-950 text-xs font-semibold text-text-secondary hover:text-text-primary hover:border-zinc-700 flex items-center justify-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            Copy day
+          </button>
+          <button
+            type="button"
+            onClick={() => openQuickCalories(defaultMealSlotForHour(new Date().getHours()))}
+            className="min-h-[40px] rounded-xl border border-border bg-zinc-950 text-xs font-semibold text-text-secondary hover:text-text-primary hover:border-zinc-700 flex items-center justify-center gap-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
+            <Flame className="w-3.5 h-3.5" />
+            Quick kcal
+          </button>
+        </div>
       </div>
 
       {/* ── Calories: Budget − Food + Exercise = Remaining ────────────────── */}
@@ -267,9 +307,11 @@ export default function TrackerPage() {
                           <span className="text-sm font-medium text-zinc-200 truncate">
                             {item.foodName || 'Food Item'}
                           </span>
-                          <span className="text-xs text-zinc-500 font-tabular whitespace-nowrap">
-                            {item.quantity} {item.unit}
-                          </span>
+                          {item.foodId !== QUICK_CALORIE_FOOD_ID && (
+                            <span className="text-xs text-zinc-500 font-tabular whitespace-nowrap">
+                              {item.quantity} {item.unit}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 text-[11px] text-zinc-500 font-tabular mt-0.5">
                           <span>
