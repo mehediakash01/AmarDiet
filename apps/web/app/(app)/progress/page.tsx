@@ -17,15 +17,11 @@ import {
 import type { WeightLog } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import HealthReportExport from '@/components/HealthReportExport';
+import { addDaysToDateString, localDateString } from '@/lib/date';
+import { buildWeeklyAdherenceFromLogs } from '@/lib/progress';
 
 // ─── SVG Weight Trend Chart ───────────────────────────────────────────────────
-function WeightTrendChart({
-  logs,
-  targetWeight,
-}: {
-  logs: WeightLog[];
-  targetWeight: number;
-}) {
+function WeightTrendChart({ logs, targetWeight }: { logs: WeightLog[]; targetWeight: number }) {
   const W = 480;
   const H = 160;
   const PAD = { top: 16, right: 16, bottom: 28, left: 42 };
@@ -37,19 +33,14 @@ function WeightTrendChart({
 
   const toX = (i: number) =>
     PAD.left + (i / Math.max(logs.length - 1, 1)) * (W - PAD.left - PAD.right);
-  const toY = (w: number) =>
-    PAD.top + ((maxW - w) / (maxW - minW)) * (H - PAD.top - PAD.bottom);
+  const toY = (w: number) => PAD.top + ((maxW - w) / (maxW - minW)) * (H - PAD.top - PAD.bottom);
 
-  const polyline = logs
-    .map((l, i) => `${toX(i)},${toY(l.weight_kg)}`)
-    .join(' ');
+  const polyline = logs.map((l, i) => `${toX(i)},${toY(l.weight_kg)}`).join(' ');
 
   const targetY = toY(targetWeight);
 
   // Y-axis labels
-  const yTicks = [minW + 0.5, (minW + maxW) / 2, maxW - 0.5].map((v) =>
-    Math.round(v * 10) / 10,
-  );
+  const yTicks = [minW + 0.5, (minW + maxW) / 2, maxW - 0.5].map((v) => Math.round(v * 10) / 10);
 
   if (logs.length === 0) {
     return (
@@ -60,12 +51,7 @@ function WeightTrendChart({
   }
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="w-full"
-      role="img"
-      aria-label="Weight trend chart"
-    >
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Weight trend chart">
       {/* Grid lines */}
       {yTicks.map((v) => (
         <g key={v}>
@@ -78,13 +64,7 @@ function WeightTrendChart({
             strokeDasharray="4 4"
             strokeWidth={1}
           />
-          <text
-            x={PAD.left - 6}
-            y={toY(v) + 4}
-            textAnchor="end"
-            fontSize={9}
-            fill="#71717a"
-          >
+          <text x={PAD.left - 6} y={toY(v) + 4} textAnchor="end" fontSize={9} fill="#71717a">
             {v}
           </text>
         </g>
@@ -100,13 +80,7 @@ function WeightTrendChart({
         strokeDasharray="6 3"
         strokeWidth={1.5}
       />
-      <text
-        x={W - PAD.right + 2}
-        y={targetY + 4}
-        fontSize={8}
-        fill="#22d3ee"
-        fontWeight="600"
-      >
+      <text x={W - PAD.right + 2} y={targetY + 4} fontSize={8} fill="#22d3ee" fontWeight="600">
         Goal
       </text>
 
@@ -137,14 +111,7 @@ function WeightTrendChart({
       {[0, Math.floor((logs.length - 1) / 2), logs.length - 1]
         .filter((v, i, a) => a.indexOf(v) === i && logs[v])
         .map((i) => (
-          <text
-            key={i}
-            x={toX(i)}
-            y={H - 4}
-            textAnchor="middle"
-            fontSize={8}
-            fill="#71717a"
-          >
+          <text key={i} x={toX(i)} y={H - 4} textAnchor="middle" fontSize={8} fill="#71717a">
             {logs[i].loggedOn.slice(5)}
           </text>
         ))}
@@ -213,33 +180,35 @@ export default function ProgressPage() {
         id: 'profile_weight',
         subscriberId,
         weight_kg: profileWeightKg,
-        loggedOn: new Date().toISOString().split('T')[0],
+        loggedOn: localDateString(),
         createdAt: new Date().toISOString(),
       },
     ];
   }, [storedWeightLogs, profileWeightKg, subscriberId]);
 
-  const startingWeight = weightLogs.length > 0 ? weightLogs[0].weight_kg : profile?.weight_kg ?? 70;
+  const startingWeight =
+    weightLogs.length > 0 ? weightLogs[0].weight_kg : (profile?.weight_kg ?? 70);
   const currentWeight =
-    weightLogs.length > 0 ? weightLogs[weightLogs.length - 1].weight_kg : profile?.weight_kg ?? 70;
-  const targetWeight = profile?.target_weight_kg ?? (profile?.weight_kg ? profile.weight_kg - 4 : 66);
+    weightLogs.length > 0
+      ? weightLogs[weightLogs.length - 1].weight_kg
+      : (profile?.weight_kg ?? 70);
+  const targetWeight =
+    profile?.target_weight_kg ?? (profile?.weight_kg ? profile.weight_kg - 4 : 66);
   const weightDelta = Math.round((currentWeight - startingWeight) * 10) / 10;
 
-  // Weekly adherence (server backed or calculated)
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const today = new Date();
-  const fallbackDays = Array.from({ length: 7 }, (_, idx) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() - (6 - idx));
-    const dateStr = d.toISOString().split('T')[0];
-    const isToday = idx === 6;
-    const isLogged = isToday ? dailyLogs.length > 0 : weightLogs.some((l) => l.loggedOn === dateStr);
-    return { dayLabel: dayNames[d.getDay()], date: dateStr, isLogged, adherent: isLogged };
-  });
+  // Weekly adherence (server backed, or computed from local logs while offline).
+  const targetCalories = nutrition?.calorieTarget ?? 2000;
+  const fallbackDays = useMemo(
+    () => buildWeeklyAdherenceFromLogs(dailyLogs, targetCalories),
+    [dailyLogs, targetCalories],
+  );
 
   const weeklyDays = serverAdherence?.days || fallbackDays;
-  const loggedDaysCount = serverAdherence?.daysLoggedCount ?? weeklyDays.filter((d) => d.isLogged).length;
-  const adherencePercent = serverAdherence?.adherencePercent ?? Math.round((loggedDaysCount / 7) * 100);
+  const loggedDaysCount =
+    serverAdherence?.daysLoggedCount ?? weeklyDays.filter((d) => d.isLogged).length;
+  const onTrackDays = weeklyDays.filter((d) => d.adherent).length;
+  const adherencePercent =
+    serverAdherence?.adherencePercent ?? Math.round((loggedDaysCount / 7) * 100);
 
   // Macro compliance
   const consumedToday = useMemo(
@@ -266,10 +235,11 @@ export default function ProgressPage() {
   // Logging streak (consecutive days with weightLogs or food logs)
   const streak = useMemo(() => {
     let count = 0;
-    const cur = new Date();
+    const today = localDateString();
     for (let i = 0; i < 30; i++) {
-      const dateStr = new Date(cur.getTime() - i * 86400000).toISOString().split('T')[0];
-      const hasLog = weightLogs.some((l) => l.loggedOn === dateStr) || (i === 0 && dailyLogs.length > 0);
+      const dateStr = addDaysToDateString(today, -i);
+      const hasLog =
+        weightLogs.some((l) => l.loggedOn === dateStr) || (i === 0 && dailyLogs.length > 0);
       if (hasLog) count++;
       else break;
     }
@@ -281,9 +251,7 @@ export default function ProgressPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
         <div>
-          <h1 className="font-bold text-2xl sm:text-3xl text-zinc-100 tracking-tight">
-            Progress
-          </h1>
+          <h1 className="font-bold text-2xl sm:text-3xl text-zinc-100 tracking-tight">Progress</h1>
           <p className="text-xs text-zinc-500 mt-1">
             Weight trend, habit adherence, and macro compliance at a glance.
           </p>
@@ -352,17 +320,25 @@ export default function ProgressPage() {
             <div className="grid grid-cols-3 gap-2 mb-4">
               <div className="bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-center">
                 <div className="text-[10px] uppercase font-bold text-zinc-500">Starting</div>
-                <div className="text-base font-bold font-tabular text-zinc-200 mt-0.5">{startingWeight} kg</div>
+                <div className="text-base font-bold font-tabular text-zinc-200 mt-0.5">
+                  {startingWeight} kg
+                </div>
               </div>
               <div className="bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-center">
                 <div className="text-[10px] uppercase font-bold text-zinc-500">Current</div>
-                <div className="text-base font-bold font-tabular text-cyan-400 mt-0.5">{currentWeight} kg</div>
+                <div className="text-base font-bold font-tabular text-cyan-400 mt-0.5">
+                  {currentWeight} kg
+                </div>
               </div>
               <div className="bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-center">
                 <div className="text-[10px] uppercase font-bold text-zinc-500">Change</div>
                 <div
                   className={`text-base font-bold font-tabular mt-0.5 flex items-center justify-center space-x-0.5 ${
-                    weightDelta < 0 ? 'text-emerald-400' : weightDelta > 0 ? 'text-red-400' : 'text-zinc-400'
+                    weightDelta < 0
+                      ? 'text-emerald-400'
+                      : weightDelta > 0
+                        ? 'text-red-400'
+                        : 'text-zinc-400'
                   }`}
                 >
                   {weightDelta < 0 ? (
@@ -392,12 +368,17 @@ export default function ProgressPage() {
                   .slice()
                   .reverse()
                   .map((log) => (
-                    <li key={log.id} className="py-2 flex items-center justify-between text-zinc-300">
+                    <li
+                      key={log.id}
+                      className="py-2 flex items-center justify-between text-zinc-300"
+                    >
                       <div className="flex items-center space-x-2">
                         <Calendar className="w-3.5 h-3.5 text-zinc-500" />
                         <span className="font-tabular">{log.loggedOn}</span>
                       </div>
-                      <span className="font-tabular font-bold text-cyan-400">{log.weight_kg} kg</span>
+                      <span className="font-tabular font-bold text-cyan-400">
+                        {log.weight_kg} kg
+                      </span>
                     </li>
                   ))}
               </ul>
@@ -417,16 +398,27 @@ export default function ProgressPage() {
                 <div key={day.date} className="flex flex-col items-center space-y-1.5">
                   <span className="text-[10px] text-zinc-500 font-medium">{day.dayLabel}</span>
                   <div
+                    title={
+                      day.adherent
+                        ? 'On track'
+                        : day.isLogged
+                          ? 'Logged, but outside the ±350 kcal target'
+                          : 'Not logged'
+                    }
                     className={`w-7 h-7 rounded-full flex items-center justify-center border transition ${
-                      day.isLogged
+                      day.adherent
                         ? 'bg-emerald-500/15 border-emerald-500/40'
-                        : 'bg-zinc-800 border-zinc-700'
+                        : day.isLogged
+                          ? 'bg-amber-500/10 border-amber-500/40'
+                          : 'bg-zinc-800 border-zinc-700'
                     }`}
                   >
-                    {day.isLogged ? (
+                    {day.adherent ? (
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                     ) : (
-                      <Circle className="w-3.5 h-3.5 text-zinc-700" />
+                      <Circle
+                        className={`w-3.5 h-3.5 ${day.isLogged ? 'text-amber-400' : 'text-zinc-700'}`}
+                      />
                     )}
                   </div>
                   <span className="text-[9px] text-zinc-600">{day.date.slice(8)}</span>
@@ -434,18 +426,18 @@ export default function ProgressPage() {
               ))}
             </div>
             <div className="text-xs text-zinc-500 text-center">
-              {loggedDaysCount} / 7 days logged this week
+              {loggedDaysCount} / 7 days logged this week · {onTrackDays} on track
             </div>
           </div>
 
           {/* Macro compliance */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
             <div>
-              <h2 className="font-bold text-sm text-zinc-100">
-                Today&apos;s Macro Compliance
-              </h2>
+              <h2 className="font-bold text-sm text-zinc-100">Today&apos;s Macro Compliance</h2>
               <p className="text-xs text-zinc-500 mt-0.5">
-                {dailyLogs.length === 0 ? 'No food logged today yet.' : `Based on ${dailyLogs.length} food entries.`}
+                {dailyLogs.length === 0
+                  ? 'No food logged today yet.'
+                  : `Based on ${dailyLogs.length} food entries.`}
               </p>
             </div>
             <MacroBar
@@ -469,7 +461,8 @@ export default function ProgressPage() {
             <div className="pt-2 border-t border-zinc-800/60 flex justify-between text-xs">
               <span className="text-zinc-500">Calories consumed</span>
               <span className="font-tabular font-bold text-cyan-400">
-                {Math.round(consumedToday.calories)} / {Math.round(nutrition?.calorieTarget ?? 2000)} kcal
+                {Math.round(consumedToday.calories)} /{' '}
+                {Math.round(nutrition?.calorieTarget ?? 2000)} kcal
               </span>
             </div>
           </div>

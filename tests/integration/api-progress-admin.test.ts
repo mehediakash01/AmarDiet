@@ -68,6 +68,19 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
       const log1 = JSON.parse(res1.body);
       expect(log1.weight_kg).toBe(80.0);
 
+      // Logging again on the same date replaces that day's entry.
+      const resSameDay = await app.inject({
+        method: 'POST',
+        url: '/api/progress/weight',
+        payload: {
+          subscriberId,
+          weight_kg: 79.6,
+          loggedOn: '2026-09-01',
+        },
+      });
+      expect(resSameDay.statusCode).toBe(201);
+      expect(JSON.parse(resSameDay.body).weight_kg).toBe(79.6);
+
       const res2 = await app.inject({
         method: 'POST',
         url: '/api/progress/weight',
@@ -78,6 +91,18 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
         },
       });
       expect(res2.statusCode).toBe(201);
+
+      const summaryRes = await app.inject({
+        method: 'GET',
+        url: `/api/progress/${subscriberId}`,
+      });
+      const summary = JSON.parse(summaryRes.body);
+      expect(summary.weightHistory).toHaveLength(2);
+      expect(summary.weightHistory.map((l: { weight_kg: number }) => l.weight_kg)).toEqual([
+        79.6, 78.5,
+      ]);
+      expect(summary.startingWeight_kg).toBe(79.6);
+      expect(summary.currentWeight_kg).toBe(78.5);
     });
 
     it('GET /api/progress/:subscriberId returns weight delta and 7-day adherence', async () => {
@@ -169,9 +194,7 @@ describe('API Integration: Progress Tracking & Admin Food Management', () => {
         carbsPer100g: 18.5,
         fatPer100g: 1.1,
         fiberPer100g: 3.0,
-        commonServings: [
-          { label: '1 medium bowl', grams: 250 },
-        ],
+        commonServings: [{ label: '1 medium bowl', grams: 250 }],
       };
 
       const createRes = await app.inject({

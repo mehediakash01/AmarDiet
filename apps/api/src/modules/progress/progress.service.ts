@@ -1,12 +1,18 @@
-import type {
-  ProgressSummary,
-  WeeklyAdherenceDay,
-  WeightLog,
-} from '@thali/types';
+import type { ProgressSummary, WeeklyAdherenceDay, WeightLog } from '@thali/types';
 import type { LogWeightInput } from '@thali/schemas';
 import type { IWeightLogRepository } from './progress.repository.js';
 import type { ProfileService } from '../profile/profile.service.js';
 import type { FoodLogService } from '../food-log/food-log.service.js';
+
+/** One entry per day (latest save wins), oldest -> newest. */
+function normalizeWeightHistory(logs: WeightLog[]): WeightLog[] {
+  const byDate = new Map<string, WeightLog>();
+  for (const log of logs) {
+    const existing = byDate.get(log.loggedOn);
+    if (!existing || log.createdAt >= existing.createdAt) byDate.set(log.loggedOn, log);
+  }
+  return [...byDate.values()].sort((a, b) => a.loggedOn.localeCompare(b.loggedOn));
+}
 
 export class ProgressService {
   constructor(
@@ -25,20 +31,23 @@ export class ProgressService {
 
   async getProgressSummary(subscriberId: string): Promise<ProgressSummary> {
     const profileWithNutrition = await this.profileService.getProfile(subscriberId);
-    const weightHistory = await this.weightRepo.findBySubscriber(subscriberId);
+    const weightHistory = normalizeWeightHistory(
+      await this.weightRepo.findBySubscriber(subscriberId),
+    );
 
-    const currentWeight = weightHistory.length > 0
-      ? weightHistory[weightHistory.length - 1].weight_kg
-      : profileWithNutrition?.profile.weight_kg;
+    const currentWeight =
+      weightHistory.length > 0
+        ? weightHistory[weightHistory.length - 1].weight_kg
+        : profileWithNutrition?.profile.weight_kg;
 
-    const startingWeight = weightHistory.length > 0
-      ? weightHistory[0].weight_kg
-      : profileWithNutrition?.profile.weight_kg;
+    const startingWeight =
+      weightHistory.length > 0
+        ? weightHistory[0].weight_kg
+        : profileWithNutrition?.profile.weight_kg;
 
     const targetWeight = profileWithNutrition?.profile.target_weight_kg;
-    const weightDelta = currentWeight && startingWeight
-      ? Math.round((currentWeight - startingWeight) * 10) / 10
-      : 0;
+    const weightDelta =
+      currentWeight && startingWeight ? Math.round((currentWeight - startingWeight) * 10) / 10 : 0;
 
     const dailyTargetKcal = profileWithNutrition?.nutrition.calorieTarget || 2000;
 
@@ -78,9 +87,7 @@ export class ProgressService {
       });
     }
 
-    const averageCalories = loggedDaysCount > 0
-      ? Math.round(totalKcalLogged / loggedDaysCount)
-      : 0;
+    const averageCalories = loggedDaysCount > 0 ? Math.round(totalKcalLogged / loggedDaysCount) : 0;
 
     const adherencePercent = Math.round((loggedDaysCount / 7) * 100);
 

@@ -11,13 +11,7 @@ import {
   shouldOfferTargetUpdate,
   validateWeightInput,
 } from '@/lib/weight';
-
-function localToday(): string {
-  const d = new Date();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${month}-${day}`;
-}
+import { localDateString } from '@/lib/date';
 
 /**
  * The one place weight is logged. Opened from the Quick Add "+" menu and from
@@ -45,7 +39,7 @@ function WeightLogContent({ onDone }: { onDone: () => void }) {
   const setProfile = useNutritionStore((s) => s.setProfile);
   const { toast } = useToast();
 
-  const today = localToday();
+  const today = localDateString();
   const [weight, setWeight] = useState('');
   const [date, setDate] = useState(selectedDate > today ? today : selectedDate);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +78,14 @@ function WeightLogContent({ onDone }: { onDone: () => void }) {
     const logs = useNutritionStore.getState().weightLogs;
     const latestLoggedOn = logs.length > 0 ? logs[logs.length - 1].loggedOn : null;
     toast(`Weight saved: ${kg.toFixed(1)} kg`, 'success');
-    if (shouldOfferTargetUpdate({ newWeightKg: kg, profileWeightKg: profile?.weight_kg, loggedOn: date, latestLoggedOn })) {
+    if (
+      shouldOfferTargetUpdate({
+        newWeightKg: kg,
+        profileWeightKg: profile?.weight_kg,
+        loggedOn: date,
+        latestLoggedOn,
+      })
+    ) {
       setOfferKg(kg);
       return;
     }
@@ -113,14 +114,16 @@ function WeightLogContent({ onDone }: { onDone: () => void }) {
           <div>
             <p className="text-sm font-semibold text-text-primary">Weight saved</p>
             <p className="text-xs text-text-secondary mt-0.5">
-              Your profile says {profile.weight_kg} kg, you logged {offerKg.toFixed(1)} kg. Update your calorie
-              targets to match?
+              Your profile says {profile.weight_kg} kg, you logged {offerKg.toFixed(1)} kg. Update
+              your calorie targets to match?
             </p>
           </div>
         </div>
 
         <div className="rounded-xl border border-border bg-zinc-950 p-3 text-center">
-          <p className="text-[11px] uppercase tracking-wider text-text-muted mb-1">Daily calorie target</p>
+          <p className="text-[11px] uppercase tracking-wider text-text-muted mb-1">
+            Daily calorie target
+          </p>
           <p className="text-lg font-bold font-tabular text-text-primary">
             {oldTarget !== undefined ? `${oldTarget} → ` : ''}
             {newTarget} kcal

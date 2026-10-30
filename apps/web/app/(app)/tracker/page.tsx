@@ -8,6 +8,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CalorieEquation } from '@/components/CalorieEquation';
 import { useToast } from '@/components/ui/Toast';
 import { sumCaloriesBurned } from '@/lib/exercise';
+import { addDaysToDateString, localDateString } from '@/lib/date';
 
 export default function TrackerPage() {
   const selectedDate = useNutritionStore((s) => s.selectedDate);
@@ -45,12 +46,7 @@ export default function TrackerPage() {
   };
 
   const changeDate = (days: number) => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + days);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    setSelectedDate(`${year}-${month}-${day}`);
+    setSelectedDate(addDaysToDateString(selectedDate, days));
   };
 
   const consumedTotals = useMemo(() => {
@@ -79,11 +75,9 @@ export default function TrackerPage() {
 
   // Format date as human-readable
   const dateLabel = (() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateString();
     if (selectedDate === today) return 'Today';
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (selectedDate === yesterday.toISOString().slice(0, 10)) return 'Yesterday';
+    if (selectedDate === addDaysToDateString(today, -1)) return 'Yesterday';
     return new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', {
       weekday: 'short',
       day: 'numeric',
@@ -144,13 +138,33 @@ export default function TrackerPage() {
         {/* Macro trio */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Protein', value: consumedTotals.protein, target: targetP, variant: 'protein' as const, color: 'text-purple-400' },
-            { label: 'Carbs', value: consumedTotals.carbs, target: targetC, variant: 'carbs' as const, color: 'text-emerald-400' },
-            { label: 'Fat', value: consumedTotals.fat, target: targetF, variant: 'fat' as const, color: 'text-amber-400' },
+            {
+              label: 'Protein',
+              value: consumedTotals.protein,
+              target: targetP,
+              variant: 'protein' as const,
+              color: 'text-purple-400',
+            },
+            {
+              label: 'Carbs',
+              value: consumedTotals.carbs,
+              target: targetC,
+              variant: 'carbs' as const,
+              color: 'text-emerald-400',
+            },
+            {
+              label: 'Fat',
+              value: consumedTotals.fat,
+              target: targetF,
+              variant: 'fat' as const,
+              color: 'text-amber-400',
+            },
           ].map((m) => (
             <div key={m.label} className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wide">{m.label}</span>
+                <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wide">
+                  {m.label}
+                </span>
                 <span className={`text-[11px] font-semibold font-tabular ${m.color}`}>
                   {Math.round(m.value)}g
                 </span>
@@ -180,17 +194,28 @@ export default function TrackerPage() {
           );
 
           return (
-            <div key={slot.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+            <div
+              key={slot.id}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden"
+            >
               {/* Slot Header */}
               <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-b border-zinc-800">
                 <div>
                   <h3 className="font-bold text-sm text-zinc-100">{slot.label}</h3>
                   {slotEntries.length > 0 && (
                     <div className="flex items-center gap-2 text-[11px] text-zinc-500 font-tabular mt-0.5">
-                      <span className="text-cyan-400 font-semibold">{Math.round(subtotal.calories)} kcal</span>
-                      <span>P <span className="text-purple-400">{Math.round(subtotal.protein)}g</span></span>
-                      <span>C <span className="text-emerald-400">{Math.round(subtotal.carbs)}g</span></span>
-                      <span>F <span className="text-amber-400">{Math.round(subtotal.fat)}g</span></span>
+                      <span className="text-cyan-400 font-semibold">
+                        {Math.round(subtotal.calories)} kcal
+                      </span>
+                      <span>
+                        P <span className="text-purple-400">{Math.round(subtotal.protein)}g</span>
+                      </span>
+                      <span>
+                        C <span className="text-emerald-400">{Math.round(subtotal.carbs)}g</span>
+                      </span>
+                      <span>
+                        F <span className="text-amber-400">{Math.round(subtotal.fat)}g</span>
+                      </span>
                     </div>
                   )}
                 </div>
@@ -218,7 +243,9 @@ export default function TrackerPage() {
               {/* Item List */}
               {slotEntries.length === 0 ? (
                 <div className="px-4 py-5 text-center">
-                  <p className="text-xs text-zinc-600">No foods logged for {slot.label.toLowerCase()}.</p>
+                  <p className="text-xs text-zinc-600">
+                    No foods logged for {slot.label.toLowerCase()}.
+                  </p>
                   <button
                     type="button"
                     onClick={() => openFoodSearch(slot.id)}
@@ -245,9 +272,22 @@ export default function TrackerPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-[11px] text-zinc-500 font-tabular mt-0.5">
-                          <span>P <span className="text-purple-400">{item.calculatedNutrition.protein}g</span></span>
-                          <span>C <span className="text-emerald-400">{item.calculatedNutrition.carbs}g</span></span>
-                          <span>F <span className="text-amber-400">{item.calculatedNutrition.fat}g</span></span>
+                          <span>
+                            P{' '}
+                            <span className="text-purple-400">
+                              {item.calculatedNutrition.protein}g
+                            </span>
+                          </span>
+                          <span>
+                            C{' '}
+                            <span className="text-emerald-400">
+                              {item.calculatedNutrition.carbs}g
+                            </span>
+                          </span>
+                          <span>
+                            F{' '}
+                            <span className="text-amber-400">{item.calculatedNutrition.fat}g</span>
+                          </span>
                         </div>
                       </div>
 
@@ -256,10 +296,11 @@ export default function TrackerPage() {
                           {Math.round(item.calculatedNutrition.calories)}{' '}
                           <span className="text-[10px] font-normal text-zinc-500">kcal</span>
                         </span>
+                        {/* Always visible (not hover-only) so it can be tapped on a phone. */}
                         <button
                           type="button"
                           onClick={() => removeFoodLog(item.id)}
-                          className="w-8 h-8 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          className="w-9 h-9 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
                           title="Remove entry"
                           aria-label={`Remove ${item.foodName ?? 'food'}`}
                         >
@@ -313,12 +354,17 @@ export default function TrackerPage() {
             {dayExercise.map((entry) => (
               <li key={entry.id} className="flex items-center justify-between px-4 py-3">
                 <div className="min-w-0 flex-1">
-                  <span className="text-sm font-medium text-zinc-200 block truncate">{entry.activityName}</span>
-                  <span className="text-[11px] text-zinc-500 font-tabular">{entry.minutes} min</span>
+                  <span className="text-sm font-medium text-zinc-200 block truncate">
+                    {entry.activityName}
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-tabular">
+                    {entry.minutes} min
+                  </span>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0 ml-3">
                   <span className="font-tabular font-bold text-sm text-zinc-100">
-                    {entry.calories_burned} <span className="text-[10px] font-normal text-zinc-500">kcal</span>
+                    {entry.calories_burned}{' '}
+                    <span className="text-[10px] font-normal text-zinc-500">kcal</span>
                   </span>
                   {/* Always visible (not hover-only) so it can be tapped on a phone. */}
                   <button

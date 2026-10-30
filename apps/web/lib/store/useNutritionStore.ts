@@ -19,6 +19,8 @@ import { db, type LocalFoodLogEntry } from '../db/db';
 import { syncEngine } from '../sync/syncEngine';
 import { getOrCreateSubscriberId, getApiBaseUrl } from '../identity/subscriberId';
 import { normalizeWeightLogs } from '../weight';
+import { localDateString } from '../date';
+import { buildWeeklyAdherenceSummaryFromLogs } from '../progress';
 import {
   calculateBMR,
   calculateTDEE,
@@ -38,11 +40,7 @@ export function computeLocalNutrition(profile: UserProfile): NutritionTargets {
   });
   const tdeeResult = calculateTDEE(bmrResult, profile.activity_level);
   const calorieTargetResult = calculateCalorieTarget(tdeeResult, profile.goal);
-  const macroTargets = calculateMacroTargets(
-    calorieTargetResult,
-    profile.goal,
-    profile.weight_kg,
-  );
+  const macroTargets = calculateMacroTargets(calorieTargetResult, profile.goal, profile.weight_kg);
 
   return {
     bmr: bmrResult.bmr_kcal,
@@ -118,12 +116,7 @@ export interface NutritionState {
     phone: string,
   ) => Promise<{ success: boolean; message: string; instruction?: string }>;
   loadLogsForDate: (date?: string) => Promise<void>;
-  logFood: (
-    food: FoodItem,
-    quantity: number,
-    unit: string,
-    slot?: MealSlot,
-  ) => Promise<void>;
+  logFood: (food: FoodItem, quantity: number, unit: string, slot?: MealSlot) => Promise<void>;
   removeFoodLog: (id: string) => Promise<void>;
   updateFoodLog: (id: string, quantity: number, unit?: string) => Promise<void>;
 
@@ -174,15 +167,11 @@ export interface NutritionState {
   }) => Promise<void>;
 }
 
-function getTodayString(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function calculateNutritionHelper(food: FoodItem, quantity: number, unit: string): CalculatedNutrition {
+function calculateNutritionHelper(
+  food: FoodItem,
+  quantity: number,
+  unit: string,
+): CalculatedNutrition {
   let totalGrams = quantity;
   const unitLower = unit.toLowerCase().trim();
   if (unitLower !== 'g' && unitLower !== 'grams') {
@@ -226,7 +215,7 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   isSubscriberReady: false,
   profile: null,
   nutrition: null,
-  selectedDate: getTodayString(),
+  selectedDate: localDateString(),
   isSearchModalOpen: false,
   searchContext: 'log',
   activeMealSlot: 'lunch',
@@ -258,7 +247,8 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     const id = await getOrCreateSubscriberId();
     let adminKey: string | null = null;
     if (typeof window !== 'undefined') {
-      adminKey = localStorage.getItem('amardiet_admin_key') || sessionStorage.getItem('amardiet_admin_key');
+      adminKey =
+        localStorage.getItem('amardiet_admin_key') || sessionStorage.getItem('amardiet_admin_key');
     }
     const expectedKey = process.env.NEXT_PUBLIC_ADMIN_KEY || 'amardiet-admin-secret-2026';
     const isAdmin = !!(adminKey && adminKey === expectedKey);
@@ -576,7 +566,8 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       console.error('Failed to load diet plan:', e);
       set({
         isLoading: false,
-        planError: "Couldn't reach the server to load your plan. Check your connection and try again.",
+        planError:
+          "Couldn't reach the server to load your plan. Check your connection and try again.",
       });
     }
   },
@@ -707,9 +698,10 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       if (d.day.toLowerCase() !== day.toLowerCase()) return d;
       const newMeals = d.meals.map((m) => {
         if (m.mealSlot !== slot) return m;
-        const newItems = index !== undefined
-          ? m.items.filter((_, i) => i !== index)
-          : m.items.filter((i) => i.foodId !== foodId);
+        const newItems =
+          index !== undefined
+            ? m.items.filter((_, i) => i !== index)
+            : m.items.filter((i) => i.foodId !== foodId);
         const subtotal = sumNutr(newItems.map((i) => i.calculatedNutrition));
         return {
           ...m,
@@ -759,7 +751,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     const targetDate = date || selectedDate;
     set({ isHydrationLoading: true });
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/hydration/${subscriberId}?date=${targetDate}`);
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/hydration/${subscriberId}?date=${targetDate}`,
+      );
       if (res.ok) {
         const data = await res.json();
         set({
@@ -776,22 +770,49 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   },
 
   loadWeightHistory: async () => {
-    const { subscriberId } = get();
+    const { subscriberId, nutrition } = get();
     if (!subscriberId) return;
     // If two loads overlap (e.g. Quick Add opening while the Progress page loads),
     // only the newest response may be applied, so a slow old one can't overwrite it.
     const seq = ++weightLoadSeq;
+    const targetCalories = nutrition?.calorieTarget ?? 2000;
+
+    // Offline fallback: same food-log and ±350 kcal rule the API uses, computed
+    // from the logs already cached in IndexedDB.
+    const loadLocalWeekly = async () => {
+      const logs = await db.foodLogs.where('subscriberId').equals(subscriberId).toArray();
+      return buildWeeklyAdherenceSummaryFromLogs(logs, targetCalories);
+    };
+
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/progress/${subscriberId}`);
-      if (!res.ok || seq !== weightLoadSeq) return;
+      if (seq !== weightLoadSeq) return;
+      if (!res.ok) {
+        const weeklyAdherence = await loadLocalWeekly();
+        if (seq === weightLoadSeq) set({ weeklyAdherence });
+        return;
+      }
       const data: Partial<ProgressSummary> = await res.json();
+      if (seq !== weightLoadSeq) return;
+      const weeklyAdherence = data.weeklyAdherence ?? (await loadLocalWeekly());
+      if (seq !== weightLoadSeq) return;
       set({
-        weightLogs: normalizeWeightLogs(Array.isArray(data.weightHistory) ? data.weightHistory : []),
-        weeklyAdherence: data.weeklyAdherence ?? null,
+        weightLogs: normalizeWeightLogs(
+          Array.isArray(data.weightHistory) ? data.weightHistory : [],
+        ),
+        weeklyAdherence,
       });
     } catch (e) {
-      // Offline: keep whatever we already have.
+      // Offline: keep the weight history we already have, but refresh the
+      // weekly summary from local logs so the Progress page isn't misleading.
       console.error('Failed to load weight history:', e);
+      if (seq !== weightLoadSeq) return;
+      try {
+        const weeklyAdherence = await loadLocalWeekly();
+        if (seq === weightLoadSeq) set({ weeklyAdherence });
+      } catch (localError) {
+        console.error('Failed to build offline weekly adherence:', localError);
+      }
     }
   },
 
@@ -799,7 +820,10 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     const { subscriberId } = get();
     const parsed = LogWeightSchema.safeParse({ subscriberId, weight_kg, loggedOn });
     if (!parsed.success) {
-      return { ok: false as const, error: parsed.error.errors[0]?.message ?? 'Please check the weight and date.' };
+      return {
+        ok: false as const,
+        error: parsed.error.errors[0]?.message ?? 'Please check the weight and date.',
+      };
     }
 
     // Not optimistic on purpose: the sheet stays open with the user's input if
@@ -812,11 +836,17 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         body: JSON.stringify(parsed.data),
       });
       if (!res.ok) {
-        return { ok: false as const, error: 'The server could not save your weight. Please try again.' };
+        return {
+          ok: false as const,
+          error: 'The server could not save your weight. Please try again.',
+        };
       }
       saved = await res.json();
     } catch {
-      return { ok: false as const, error: 'Could not reach the server. Check your connection and try again.' };
+      return {
+        ok: false as const,
+        error: 'Could not reach the server. Check your connection and try again.',
+      };
     }
 
     // Show it immediately, then refresh from the server (which also updates the
@@ -848,9 +878,17 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   logExercise: async (activityKey: string, minutes: number) => {
     const { subscriberId, selectedDate } = get();
-    const parsed = LogExerciseSchema.safeParse({ subscriberId, loggedOn: selectedDate, activityKey, minutes });
+    const parsed = LogExerciseSchema.safeParse({
+      subscriberId,
+      loggedOn: selectedDate,
+      activityKey,
+      minutes,
+    });
     if (!parsed.success) {
-      return { ok: false as const, error: parsed.error.errors[0]?.message ?? 'Please check the activity and minutes.' };
+      return {
+        ok: false as const,
+        error: parsed.error.errors[0]?.message ?? 'Please check the activity and minutes.',
+      };
     }
 
     // Not optimistic: the server computes the calories, so we wait for its answer.
@@ -867,7 +905,8 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
         if (res.status === 400) {
           try {
             const body = await res.json();
-            if (typeof body?.error === 'string' && body.error !== 'Validation failed') message = body.error;
+            if (typeof body?.error === 'string' && body.error !== 'Validation failed')
+              message = body.error;
           } catch {
             // keep the generic message
           }
@@ -876,7 +915,10 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       }
       saved = await res.json();
     } catch {
-      return { ok: false as const, error: 'Could not reach the server. Check your connection and try again.' };
+      return {
+        ok: false as const,
+        error: 'Could not reach the server. Check your connection and try again.',
+      };
     }
 
     // Show it right away, then refresh from the server for the authoritative list.
@@ -897,10 +939,16 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
       );
       // 404 means it is already gone on the server, so removing it here is correct too.
       if (!res.ok && res.status !== 404) {
-        return { ok: false as const, error: 'The server could not remove that entry. Please try again.' };
+        return {
+          ok: false as const,
+          error: 'The server could not remove that entry. Please try again.',
+        };
       }
     } catch {
-      return { ok: false as const, error: 'Could not reach the server. Check your connection and try again.' };
+      return {
+        ok: false as const,
+        error: 'Could not reach the server. Check your connection and try again.',
+      };
     }
     exerciseLoadSeq++; // a load that started before the delete must not bring the entry back
     set((state) => ({ exerciseLogs: state.exerciseLogs.filter((l) => l.id !== id) }));

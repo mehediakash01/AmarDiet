@@ -9,6 +9,7 @@ import { defaultMealSlotForHour } from '@/lib/meal-slot';
 import { getFastingProgress } from '@/lib/fasting';
 import { formatWeightHint } from '@/lib/weight';
 import { formatBurnedHint, sumCaloriesBurned } from '@/lib/exercise';
+import { localDateString } from '@/lib/date';
 import { ModalSheet } from '@/components/ui/ModalSheet';
 import { useToast } from '@/components/ui/Toast';
 
@@ -20,13 +21,6 @@ const MEAL_SLOTS: { value: MealSlot; label: string }[] = [
   { value: 'dinner', label: 'Dinner' },
   { value: 'snack', label: 'Snack' },
 ];
-
-function localToday(): string {
-  const d = new Date();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${month}-${day}`;
-}
 
 /**
  * MyFitnessPal-style "+" menu. Opened by the raised center button in the
@@ -107,7 +101,7 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
     if (pendingLoad) await pendingLoad; // never rejects: loadHydration handles its own errors
     await logWater(WATER_QUICK_ADD_ML);
     const { waterLog, selectedDate } = useNutritionStore.getState();
-    const dateNote = selectedDate !== localToday() ? ` for ${selectedDate}` : '';
+    const dateNote = selectedDate !== localDateString() ? ` for ${selectedDate}` : '';
     toast(
       waterLog
         ? `Water${dateNote}: ${waterLog.amount_ml} / ${waterLog.target_ml} ml`
@@ -133,7 +127,9 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
     if (pathname === '/dashboard') {
       // Already there: wait a beat for the sheet to unmount, then scroll to the card.
       window.setTimeout(() => {
-        document.getElementById('hydration')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document
+          .getElementById('hydration')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 80);
     } else {
       router.push('/dashboard#hydration');
@@ -161,7 +157,9 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
     {
       key: 'exercise',
       label: 'Exercise',
-      hint: formatBurnedHint(sumCaloriesBurned(exerciseLogs.filter((l) => l.loggedOn === selectedDate))),
+      hint: formatBurnedHint(
+        sumCaloriesBurned(exerciseLogs.filter((l) => l.loggedOn === selectedDate)),
+      ),
       icon: Dumbbell,
       onClick: handleExercise,
     },
