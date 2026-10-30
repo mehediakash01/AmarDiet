@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, Calendar, Camera, Flame, Dumbbell } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, Calendar, Camera, Dumbbell } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { CalorieEquation } from '@/components/CalorieEquation';
 import { useToast } from '@/components/ui/Toast';
 import { sumCaloriesBurned } from '@/lib/exercise';
 
@@ -72,11 +73,9 @@ export default function TrackerPage() {
     { id: 'snack', label: 'Snacks' },
   ];
 
-  const targetKcal = nutrition?.calorieTarget || 2000;
   const targetP = nutrition?.macros.protein_g || 140;
   const targetC = nutrition?.macros.carbs_g || 200;
   const targetF = nutrition?.macros.fat_g || 55;
-  const remainingKcal = Math.max(0, Math.round(targetKcal - consumedTotals.calories));
 
   // Format date as human-readable
   const dateLabel = (() => {
@@ -130,23 +129,18 @@ export default function TrackerPage() {
         </button>
       </div>
 
+      {/* ── Calories: Budget − Food + Exercise = Remaining ────────────────── */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5">
+        <CalorieEquation
+          budget={nutrition?.calorieTarget}
+          food={consumedTotals.calories}
+          exercise={caloriesBurned}
+          showBar
+        />
+      </div>
+
       {/* ── Daily Macro Summary ───────────────────────────────────────────── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 space-y-4">
-        {/* Calorie headline */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Flame className="w-4 h-4 text-cyan-400" />
-            <span className="text-sm font-bold text-zinc-100">
-              <span className="font-tabular text-cyan-400">{Math.round(consumedTotals.calories)}</span>
-              <span className="text-zinc-500 font-normal"> / {Math.round(targetKcal)} kcal</span>
-            </span>
-          </div>
-          <span className="text-xs text-zinc-400 font-tabular">
-            {remainingKcal > 0 ? `${remainingKcal} kcal left` : 'Target met'}
-          </span>
-        </div>
-        <ProgressBar value={consumedTotals.calories} max={targetKcal} variant="calories" size="md" />
-
         {/* Macro trio */}
         <div className="grid grid-cols-3 gap-3">
           {[

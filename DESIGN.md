@@ -98,10 +98,17 @@ All motion respects `prefers-reduced-motion` via globals.css.
 
 ### `PlateRingChart` (`components/PlateRingChart.tsx`)
 
-- SVG circular ring showing calorie consumption vs target
+- SVG circular ring showing food against what is available today (budget + exercise)
 - Glow via `drop-shadow` — cyan when under target, red when over
 - Center: remaining kcal (large numeral) or `+N kcal exceeded`
+- Below the ring: the `CalorieEquation` row (Budget − Food + Exercise = Remaining)
 - Below: segmented Protein / Carbs / Fat tiles with `ProgressBar` per macro
+
+### `CalorieEquation` (`components/CalorieEquation.tsx`)
+
+- `Budget − Food + Exercise = Remaining`, used on the Dashboard (inside `PlateRingChart`) and at the top of the Diary
+- Numbers come from `lib/calories.ts` → `calculateCaloriesRemaining` in `packages/nutrition-engine`; never computed in the component
+- Over budget: the last cell shows `−N` labelled "Over" in warning red. No profile: a plain "Set up your profile" message
 
 ### `BmiSpectrumChart` (`components/BmiSpectrumChart.tsx`)
 
@@ -163,7 +170,7 @@ All motion respects `prefers-reduced-motion` via globals.css.
 - **No AI for arithmetic** — AI output is always re-validated by `nutrition-engine` before display.
 - **Offline-first**: every user action writes to IndexedDB (Dexie) first, then queues a sync event.
 - **Tabular numerals** on all macro/calorie figures via `.font-tabular`.
-- **Warning red** appears only when `consumed > target` — never decorative.
+- **Warning red** appears only when you are over budget (food > budget + exercise) — never decorative.
 
 ---
 

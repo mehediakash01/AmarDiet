@@ -6,6 +6,7 @@ import { Calendar, Settings, Sparkles, TrendingUp } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { PlateRingChart } from '@/components/PlateRingChart';
+import { sumCaloriesBurned } from '@/lib/exercise';
 import { BmiSpectrumChart } from '@/components/BmiSpectrumChart';
 import { MealSlotCard } from '@/components/MealSlotCard';
 import { SubscriptionCard } from '@/components/SubscriptionCard';
@@ -23,11 +24,20 @@ export default function DashboardPage() {
   const updateFoodLog = useNutritionStore((s) => s.updateFoodLog);
   const loadProfile = useNutritionStore((s) => s.loadProfile);
   const loadLogsForDate = useNutritionStore((s) => s.loadLogsForDate);
+  const exerciseLogs = useNutritionStore((s) => s.exerciseLogs);
+  const loadExercise = useNutritionStore((s) => s.loadExercise);
 
   useEffect(() => {
     loadProfile();
     loadLogsForDate();
-  }, [loadProfile, loadLogsForDate]);
+    loadExercise();
+  }, [loadProfile, loadLogsForDate, loadExercise]);
+
+  // Calories burned on the viewed day. The store can briefly hold another day's list while loading.
+  const caloriesBurned = useMemo(
+    () => sumCaloriesBurned(exerciseLogs.filter((l) => l.loggedOn === selectedDate)),
+    [exerciseLogs, selectedDate],
+  );
 
   // Arriving from the Quick Add menu's "Fasting" tile (or a #hydration link):
   // bring the water & fasting card into view.
@@ -101,7 +111,7 @@ export default function DashboardPage() {
         {/* RIGHT COLUMN on desktop / TOP HERO on mobile: Energy Ring & Stats */}
         <div className="order-1 lg:order-2 lg:col-span-5 space-y-5">
           {nutrition && (
-            <PlateRingChart consumed={consumedTotals} targets={nutrition} />
+            <PlateRingChart consumed={consumedTotals} targets={nutrition} exerciseKcal={caloriesBurned} />
           )}
 
           {/* Water & fasting tracker (scroll-mt clears the sticky header) */}

@@ -31,6 +31,9 @@ import type {
 // Exercise (MET-based calories burned + activity catalog) lives in its own file.
 export * from './exercise.js';
 
+// Calories remaining (budget - food + exercise) for the Dashboard and Diary.
+export * from './calories-remaining.js';
+
 // ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------

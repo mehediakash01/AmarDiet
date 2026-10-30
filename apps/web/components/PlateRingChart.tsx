@@ -5,20 +5,26 @@ import type { CalculatedNutrition, NutritionTargets } from '@thali/types';
 import { Flame, Beef, Wheat, Droplet } from 'lucide-react';
 import { Card } from './ui/Card';
 import { ProgressBar } from './ui/ProgressBar';
+import { CalorieEquation } from './CalorieEquation';
+import { getCalorieBalance } from '@/lib/calories';
 
 interface PlateRingChartProps {
   consumed: CalculatedNutrition;
   targets: NutritionTargets;
+  /** Calories burned by logged exercise today; adds to what you can eat. */
+  exerciseKcal?: number;
 }
 
-export function PlateRingChart({ consumed, targets }: PlateRingChartProps) {
-  const targetKcal = targets.calorieTarget;
-  const consumedKcal = consumed.calories;
-  const remainingKcal = Math.max(0, targetKcal - consumedKcal);
-  const isOver = consumedKcal > targetKcal;
-  const overKcal = Math.round(consumedKcal - targetKcal);
-
-  const percentConsumed = Math.min(100, Math.round((consumedKcal / targetKcal) * 100));
+export function PlateRingChart({ consumed, targets, exerciseKcal = 0 }: PlateRingChartProps) {
+  // Budget - Food + Exercise = Remaining, from the nutrition-engine via lib/calories.
+  // The ring, the numbers in its centre and the equation below all read this one result.
+  const balance = getCalorieBalance(targets.calorieTarget, consumed.calories, exerciseKcal);
+  const foodKcal = balance?.food ?? Math.round(consumed.calories);
+  const remainingKcal = balance?.remaining ?? 0;
+  const isOver = balance?.isOver ?? false;
+  const overKcal = balance?.over ?? 0;
+  const percentUsed = balance?.percentUsed ?? 0;
+  const percentConsumed = Math.min(100, percentUsed);
 
   // SVG Ring calculation
   const radius = 62;
@@ -50,9 +56,9 @@ export function PlateRingChart({ consumed, targets }: PlateRingChartProps) {
         </div>
         <div className="flex items-center space-x-1.5 text-xs font-semibold text-text-muted">
           <Flame className="w-3.5 h-3.5 text-macro-calories" />
-          <span className="font-tabular text-text-primary">{Math.round(consumedKcal)}</span>
+          <span className="font-tabular text-text-primary">{foodKcal}</span>
           <span>/</span>
-          <span className="font-tabular">{Math.round(targetKcal)} kcal</span>
+          <span className="font-tabular">{balance ? balance.allowance : '\u2014'} kcal</span>
         </div>
       </div>
 
@@ -107,7 +113,7 @@ export function PlateRingChart({ consumed, targets }: PlateRingChartProps) {
               {isOver ? 'Kcal Exceeded' : 'Kcal Remaining'}
             </span>
             <span className="text-[11px] font-medium text-text-muted mt-1 font-tabular">
-              {percentConsumed}% logged
+              {percentUsed}% logged
             </span>
           </div>
         </div>
@@ -128,15 +134,12 @@ export function PlateRingChart({ consumed, targets }: PlateRingChartProps) {
                 ? `You have ${Math.round(remainingKcal)} kcal left across remaining meal slots. Balance with healthy protein & fiber.`
                 : 'You are on track with your calculated energy target for today.'}
           </p>
-          <div className="pt-2 flex items-center justify-center sm:justify-start gap-2">
-            <span className="text-[11px] px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-border text-text-secondary font-medium">
-              Target: <strong className="text-text-primary font-tabular">{Math.round(targetKcal)}</strong> kcal
-            </span>
-            <span className="text-[11px] px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-border text-text-secondary font-medium">
-              Burned/BMR: <strong className="text-text-primary font-tabular">{Math.round(targets.bmr)}</strong> kcal
-            </span>
-          </div>
         </div>
+      </div>
+
+      {/* Budget − Food + Exercise = Remaining */}
+      <div className="border-t border-border/60 pt-4">
+        <CalorieEquation budget={targets.calorieTarget} food={consumed.calories} exercise={exerciseKcal} />
       </div>
 
       {/* Segmented Macro Tiles (Protein, Carbs, Fat) */}
