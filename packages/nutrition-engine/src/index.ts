@@ -28,6 +28,9 @@ import type {
   TDEEResult,
 } from './types.js';
 
+// Exercise (MET-based calories burned + activity catalog) lives in its own file.
+export * from './exercise.js';
+
 // ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import type {
   CalculatedNutrition,
   DietPlan,
   DietPlanItem,
+  ExerciseLog,
   FastingSession,
   FoodItem,
   GroceryList,
@@ -13,7 +14,7 @@ import type {
   WaterLog,
   WeightLog,
 } from '@thali/types';
-import { LogWeightSchema } from '@thali/schemas';
+import { LogExerciseSchema, LogWeightSchema } from '@thali/schemas';
 import { db, type LocalFoodLogEntry } from '../db/db';
 import { syncEngine } from '../sync/syncEngine';
 import { getOrCreateSubscriberId, getApiBaseUrl } from '../identity/subscriberId';
@@ -86,6 +87,7 @@ export interface NutritionState {
   isScanModalOpen: boolean;
   isQuickAddOpen: boolean;
   isWeightSheetOpen: boolean;
+  isExerciseSheetOpen: boolean;
   // Which tab of the dashboard water/fasting card is showing. Lives in the store
   // (not component state) so the Quick Add menu can open the card on Fasting.
   hydrationTab: 'water' | 'fasting';
@@ -107,6 +109,8 @@ export interface NutritionState {
   closeQuickAdd: () => void;
   openWeightSheet: () => void;
   closeWeightSheet: () => void;
+  openExerciseSheet: () => void;
+  closeExerciseSheet: () => void;
   setHydrationTab: (tab: 'water' | 'fasting') => void;
   loadProfile: () => Promise<void>;
   loadSubscription: () => Promise<void>;
@@ -150,6 +154,17 @@ export interface NutritionState {
     weight_kg: number,
     loggedOn: string,
   ) => Promise<{ ok: true; log: WeightLog } | { ok: false; error: string }>;
+  // Exercise sessions for the diary's selected date (GET /api/exercise-logs).
+  // calories_burned is computed by the API; the client only shows it. Consumers
+  // should filter by loggedOn === selectedDate, since this can briefly hold the
+  // previous day's list while a new date loads.
+  exerciseLogs: ExerciseLog[];
+  loadExercise: (date?: string) => Promise<void>;
+  logExercise: (
+    activityKey: string,
+    minutes: number,
+  ) => Promise<{ ok: true; log: ExerciseLog } | { ok: false; error: string }>;
+  removeExercise: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   logWater: (delta_ml: number) => Promise<void>;
   updateFasting: (session: {
     mode: FastingSession['mode'];
@@ -203,6 +218,8 @@ function sumNutr(items: CalculatedNutrition[]): CalculatedNutrition {
 
 // Incremented on every weight-history request; see loadWeightHistory.
 let weightLoadSeq = 0;
+// Same idea for exercise lists, so a slow response for an old date can't replace a newer one.
+let exerciseLoadSeq = 0;
 
 export const useNutritionStore = create<NutritionState>((set, get) => ({
   subscriberId: '',
@@ -229,6 +246,8 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
   isScanModalOpen: false,
   isQuickAddOpen: false,
   isWeightSheetOpen: false,
+  isExerciseSheetOpen: false,
+  exerciseLogs: [],
   weightLogs: [],
   weeklyAdherence: null,
   hydrationTab: 'water',
@@ -332,6 +351,14 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   closeWeightSheet: () => {
     set({ isWeightSheetOpen: false });
+  },
+
+  openExerciseSheet: () => {
+    set({ isExerciseSheetOpen: true });
+  },
+
+  closeExerciseSheet: () => {
+    set({ isExerciseSheetOpen: false });
   },
 
   setHydrationTab: (tab) => {
@@ -799,6 +826,85 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
     await get().loadWeightHistory();
     const latest = get().weightLogs.find((l) => l.loggedOn === loggedOn) ?? saved;
     return { ok: true as const, log: latest };
+  },
+
+  loadExercise: async (date?: string) => {
+    const { subscriberId, selectedDate } = get();
+    if (!subscriberId) return;
+    const day = date || selectedDate;
+    const seq = ++exerciseLoadSeq;
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/exercise-logs?subscriberId=${encodeURIComponent(subscriberId)}&date=${day}`,
+      );
+      if (!res.ok || seq !== exerciseLoadSeq) return;
+      const data: { logs?: ExerciseLog[] } = await res.json();
+      set({ exerciseLogs: Array.isArray(data.logs) ? data.logs : [] });
+    } catch (e) {
+      // Offline: keep whatever we already have.
+      console.error('Failed to load exercise logs:', e);
+    }
+  },
+
+  logExercise: async (activityKey: string, minutes: number) => {
+    const { subscriberId, selectedDate } = get();
+    const parsed = LogExerciseSchema.safeParse({ subscriberId, loggedOn: selectedDate, activityKey, minutes });
+    if (!parsed.success) {
+      return { ok: false as const, error: parsed.error.errors[0]?.message ?? 'Please check the activity and minutes.' };
+    }
+
+    // Not optimistic: the server computes the calories, so we wait for its answer.
+    let saved: ExerciseLog;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/exercise-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed.data),
+      });
+      if (!res.ok) {
+        // 400s carry a readable reason (e.g. "Complete your profile first"); show it.
+        let message = 'The server could not save your exercise. Please try again.';
+        if (res.status === 400) {
+          try {
+            const body = await res.json();
+            if (typeof body?.error === 'string' && body.error !== 'Validation failed') message = body.error;
+          } catch {
+            // keep the generic message
+          }
+        }
+        return { ok: false as const, error: message };
+      }
+      saved = await res.json();
+    } catch {
+      return { ok: false as const, error: 'Could not reach the server. Check your connection and try again.' };
+    }
+
+    // Show it right away, then refresh from the server for the authoritative list.
+    exerciseLoadSeq++; // invalidate any older in-flight load
+    set((state) => ({
+      exerciseLogs: [...state.exerciseLogs.filter((l) => l.id !== saved.id), saved],
+    }));
+    await get().loadExercise(saved.loggedOn);
+    return { ok: true as const, log: saved };
+  },
+
+  removeExercise: async (id: string) => {
+    const { subscriberId } = get();
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/api/exercise-logs/${encodeURIComponent(id)}?subscriberId=${encodeURIComponent(subscriberId)}`,
+        { method: 'DELETE' },
+      );
+      // 404 means it is already gone on the server, so removing it here is correct too.
+      if (!res.ok && res.status !== 404) {
+        return { ok: false as const, error: 'The server could not remove that entry. Please try again.' };
+      }
+    } catch {
+      return { ok: false as const, error: 'Could not reach the server. Check your connection and try again.' };
+    }
+    exerciseLoadSeq++; // a load that started before the delete must not bring the entry back
+    set((state) => ({ exerciseLogs: state.exerciseLogs.filter((l) => l.id !== id) }));
+    return { ok: true as const };
   },
 
   logWater: async (delta_ml: number) => {

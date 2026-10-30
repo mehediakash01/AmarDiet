@@ -351,5 +351,36 @@ export const UpdateFastingSchema = z.object({
 });
 export type UpdateFastingInput = z.infer<typeof UpdateFastingSchema>;
 
+// Exercise Schemas
+// The client sends WHAT it did and for how long. The server looks up the MET value
+// and the user's weight and computes calories itself (nutrition-engine), so there
+// is deliberately no met / calories field here. Unknown fields are stripped by Zod.
+// The 1-600 minute range mirrors EXERCISE_MIN/MAX_MINUTES in the engine, which
+// re-validates it.
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+export const LogExerciseSchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  loggedOn: z.string().regex(DATE_ONLY, 'loggedOn must be YYYY-MM-DD format'),
+  activityKey: z.string().min(1, 'activityKey is required').max(64),
+  minutes: z
+    .number({ invalid_type_error: 'minutes must be a number' })
+    .int('minutes must be a whole number')
+    .min(1, 'minutes must be at least 1')
+    .max(600, 'minutes must be at most 600'),
+});
+export type LogExerciseInput = z.infer<typeof LogExerciseSchema>;
+
+export const ExerciseLogsQuerySchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+  date: z.string().regex(DATE_ONLY, 'date must be YYYY-MM-DD format'),
+});
+export type ExerciseLogsQueryInput = z.infer<typeof ExerciseLogsQuerySchema>;
+
+export const DeleteExerciseQuerySchema = z.object({
+  subscriberId: z.string().min(1, 'subscriberId is required'),
+});
+export type DeleteExerciseQueryInput = z.infer<typeof DeleteExerciseQuerySchema>;
+
 
 

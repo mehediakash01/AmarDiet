@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useMemo } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, Calendar, Camera, Flame } from 'lucide-react';
+import { Plus, X, ChevronLeft, ChevronRight, Calendar, Camera, Flame, Dumbbell } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { useToast } from '@/components/ui/Toast';
+import { sumCaloriesBurned } from '@/lib/exercise';
 
 export default function TrackerPage() {
   const selectedDate = useNutritionStore((s) => s.selectedDate);
@@ -15,10 +17,31 @@ export default function TrackerPage() {
   const openMealScan = useNutritionStore((s) => s.openMealScan);
   const removeFoodLog = useNutritionStore((s) => s.removeFoodLog);
   const loadLogsForDate = useNutritionStore((s) => s.loadLogsForDate);
+  const exerciseLogs = useNutritionStore((s) => s.exerciseLogs);
+  const loadExercise = useNutritionStore((s) => s.loadExercise);
+  const removeExercise = useNutritionStore((s) => s.removeExercise);
+  const openExerciseSheet = useNutritionStore((s) => s.openExerciseSheet);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadLogsForDate(selectedDate);
   }, [selectedDate, loadLogsForDate]);
+
+  useEffect(() => {
+    loadExercise(selectedDate);
+  }, [selectedDate, loadExercise]);
+
+  // The store may briefly hold the previous day's list while a new date loads.
+  const dayExercise = useMemo(
+    () => exerciseLogs.filter((l) => l.loggedOn === selectedDate),
+    [exerciseLogs, selectedDate],
+  );
+  const caloriesBurned = sumCaloriesBurned(dayExercise);
+
+  const handleRemoveExercise = async (id: string) => {
+    const result = await removeExercise(id);
+    if (!result.ok) toast(result.error, 'error');
+  };
 
   const changeDate = (days: number) => {
     const d = new Date(selectedDate);
@@ -256,6 +279,67 @@ export default function TrackerPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* ── Exercise ──────────────────────────────────────────────────────── */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/60 border-b border-zinc-800">
+          <div>
+            <h3 className="font-bold text-sm text-zinc-100">Exercise</h3>
+            {dayExercise.length > 0 && (
+              <p className="text-[11px] text-zinc-500 font-tabular mt-0.5">
+                <span className="text-cyan-400 font-semibold">{caloriesBurned} kcal</span> burned
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={openExerciseSheet}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 rounded-lg text-xs font-semibold transition-all min-h-[36px]"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </button>
+        </div>
+
+        {dayExercise.length === 0 ? (
+          <div className="px-4 py-5 text-center">
+            <p className="text-xs text-zinc-600">No exercise logged for this day.</p>
+            <button
+              type="button"
+              onClick={openExerciseSheet}
+              className="mt-2 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors inline-flex items-center gap-1"
+            >
+              <Dumbbell className="w-3 h-3" />
+              Log a workout or activity
+            </button>
+          </div>
+        ) : (
+          <ul className="divide-y divide-zinc-800/60">
+            {dayExercise.map((entry) => (
+              <li key={entry.id} className="flex items-center justify-between px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-zinc-200 block truncate">{entry.activityName}</span>
+                  <span className="text-[11px] text-zinc-500 font-tabular">{entry.minutes} min</span>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                  <span className="font-tabular font-bold text-sm text-zinc-100">
+                    {entry.calories_burned} <span className="text-[10px] font-normal text-zinc-500">kcal</span>
+                  </span>
+                  {/* Always visible (not hover-only) so it can be tapped on a phone. */}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveExercise(entry.id)}
+                    className="w-9 h-9 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
+                    aria-label={`Remove ${entry.activityName}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

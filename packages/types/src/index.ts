@@ -263,6 +263,22 @@ export interface FastingSession {
   isActive: boolean;
 }
 
+/**
+ * One logged exercise session. `met` and `calories_burned` are computed by the
+ * server from the activity catalog and the profile weight; clients never send them.
+ */
+export interface ExerciseLog {
+  id: string;
+  subscriberId: string;
+  loggedOn: string; // YYYY-MM-DD
+  activityKey: string; // key in EXERCISE_CATALOG (@thali/nutrition-engine)
+  activityName: string; // name at the time of logging, so history survives catalog edits
+  minutes: number;
+  met: number;
+  calories_burned: number; // whole kcal
+  createdAt: string;
+}
+
 export interface HydrationSummary {
   water: WaterLog;
   fasting: FastingSession | null;

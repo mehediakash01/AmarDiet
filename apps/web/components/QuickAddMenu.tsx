@@ -2,12 +2,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Utensils, Camera, Droplets, Timer, Scale } from 'lucide-react';
+import { Utensils, Camera, Droplets, Timer, Scale, Dumbbell } from 'lucide-react';
 import type { MealSlot } from '@thali/types';
 import { useNutritionStore } from '@/lib/store/useNutritionStore';
 import { defaultMealSlotForHour } from '@/lib/meal-slot';
 import { getFastingProgress } from '@/lib/fasting';
 import { formatWeightHint } from '@/lib/weight';
+import { formatBurnedHint, sumCaloriesBurned } from '@/lib/exercise';
 import { ModalSheet } from '@/components/ui/ModalSheet';
 import { useToast } from '@/components/ui/Toast';
 
@@ -63,6 +64,10 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
   const loadWeightHistory = useNutritionStore((s) => s.loadWeightHistory);
   const openWeightSheet = useNutritionStore((s) => s.openWeightSheet);
   const profileWeightKg = useNutritionStore((s) => s.profile?.weight_kg);
+  const exerciseLogs = useNutritionStore((s) => s.exerciseLogs);
+  const loadExercise = useNutritionStore((s) => s.loadExercise);
+  const openExerciseSheet = useNutritionStore((s) => s.openExerciseSheet);
+  const selectedDate = useNutritionStore((s) => s.selectedDate);
   const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
@@ -80,6 +85,11 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     loadWeightHistory();
   }, [loadWeightHistory]);
+
+  // Same for the Exercise tile's "kcal burned" hint.
+  useEffect(() => {
+    loadExercise();
+  }, [loadExercise]);
 
   const handleFood = () => {
     onDone();
@@ -104,6 +114,11 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
         : `Added ${WATER_QUICK_ADD_ML} ml of water${dateNote}`,
       'success',
     );
+  };
+
+  const handleExercise = () => {
+    onDone();
+    openExerciseSheet();
   };
 
   const handleWeight = () => {
@@ -143,6 +158,13 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
   const logTiles: Tile[] = [
     { key: 'food', label: 'Food', hint: 'Search & log', icon: Utensils, onClick: handleFood },
     { key: 'scan', label: 'Scan meal', hint: 'AI from photo', icon: Camera, onClick: handleScan },
+    {
+      key: 'exercise',
+      label: 'Exercise',
+      hint: formatBurnedHint(sumCaloriesBurned(exerciseLogs.filter((l) => l.loggedOn === selectedDate))),
+      icon: Dumbbell,
+      onClick: handleExercise,
+    },
   ];
 
   const trackTiles: Tile[] = [
@@ -185,7 +207,7 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
     <div className="space-y-5">
       <div className="space-y-3">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-          Log food &middot; add to meal
+          Log &middot; food goes to
         </p>
         <div className="grid grid-cols-4 gap-2" role="group" aria-label="Meal">
           {MEAL_SLOTS.map((m) => {
@@ -207,7 +229,7 @@ function QuickAddContent({ onDone }: { onDone: () => void }) {
             );
           })}
         </div>
-        <div className="grid grid-cols-2 gap-3">{logTiles.map(renderTile)}</div>
+        <div className="grid grid-cols-3 gap-3">{logTiles.map(renderTile)}</div>
       </div>
 
       <div className="space-y-3">

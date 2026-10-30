@@ -247,5 +247,35 @@ export const fastingSessions = pgTable('fasting_sessions', {
 export type FastingSessionRow = typeof fastingSessions.$inferSelect;
 export type NewFastingSessionRow = typeof fastingSessions.$inferInsert;
 
+/**
+ * Exercise logs table — one row per logged session.
+ * met and calories_burned are computed server-side by @thali/nutrition-engine.
+ */
+export const exerciseLogs = pgTable(
+  'exercise_logs',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    subscriberId: varchar('subscriber_id', { length: 64 })
+      .notNull()
+      .references(() => subscribers.id, { onDelete: 'cascade' }),
+    loggedOn: varchar('logged_on', { length: 16 }).notNull(), // YYYY-MM-DD
+    activityKey: varchar('activity_key', { length: 64 }).notNull(),
+    activityName: varchar('activity_name', { length: 128 }).notNull(),
+    minutes: integer('minutes').notNull(),
+    met: doublePrecision('met').notNull(),
+    calories_burned: integer('calories_burned').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    subscriberDateIdx: index('exercise_logs_subscriber_date_idx').on(
+      table.subscriberId,
+      table.loggedOn,
+    ),
+  }),
+);
+
+export type ExerciseLogRow = typeof exerciseLogs.$inferSelect;
+export type NewExerciseLogRow = typeof exerciseLogs.$inferInsert;
+
 
 

@@ -51,6 +51,13 @@ import {
 } from './modules/hydration/hydration.repository.js';
 import { HydrationService } from './modules/hydration/hydration.service.js';
 import { hydrationRoutes } from './modules/hydration/hydration.routes.js';
+import {
+  type IExerciseLogRepository,
+  DrizzleExerciseLogRepository,
+  InMemoryExerciseLogRepository,
+} from './modules/exercise/exercise.repository.js';
+import { ExerciseService } from './modules/exercise/exercise.service.js';
+import { exerciseRoutes } from './modules/exercise/exercise.routes.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { GeminiVisionProvider } from './modules/ai/providers/gemini.provider.js';
 import { GroqVisionProvider } from './modules/ai/providers/groq.provider.js';
@@ -92,6 +99,7 @@ export interface AppOptions {
   mealScanRepo?: IMealScanRepository;
   webhookEventRepo?: IWebhookEventRepository;
   hydrationRepo?: IHydrationRepository;
+  exerciseRepo?: IExerciseLogRepository;
   subscriptionService?: SubscriptionService;
   bdappsClient?: BdappsClient;
   foodService?: FoodService;
@@ -147,6 +155,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   let mealScanRepo = options.mealScanRepo;
   let webhookEventRepo = options.webhookEventRepo;
   let hydrationRepo = options.hydrationRepo;
+  let exerciseRepo = options.exerciseRepo;
 
   const db = getDatabase(options.databaseUrl);
   const usingRealDatabase = db !== null;
@@ -174,7 +183,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     !foodRepo ||
     !mealScanRepo ||
     !webhookEventRepo ||
-    !hydrationRepo
+    !hydrationRepo ||
+    !exerciseRepo
   ) {
     if (db) {
       subscriberRepo = subscriberRepo || new DrizzleSubscriberRepository(db);
@@ -186,6 +196,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       mealScanRepo = mealScanRepo || new DrizzleMealScanRepository(db);
       webhookEventRepo = webhookEventRepo || new DrizzleWebhookEventRepository(db);
       hydrationRepo = hydrationRepo || new DrizzleHydrationRepository(db);
+      exerciseRepo = exerciseRepo || new DrizzleExerciseLogRepository(db);
     } else {
       subscriberRepo = subscriberRepo || new InMemorySubscriberRepository();
       profileRepo = profileRepo || new InMemoryProfileRepository();
@@ -196,6 +207,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       mealScanRepo = mealScanRepo || new InMemoryMealScanRepository();
       webhookEventRepo = webhookEventRepo || new InMemoryWebhookEventRepository();
       hydrationRepo = hydrationRepo || new InMemoryHydrationRepository();
+      exerciseRepo = exerciseRepo || new InMemoryExerciseLogRepository();
     }
   }
 
@@ -343,6 +355,8 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   await app.register(progressRoutes(progressService));
   const hydrationService = new HydrationService(hydrationRepo, profileService);
   await app.register(hydrationRoutes(hydrationService));
+  const exerciseService = new ExerciseService(exerciseRepo, profileService);
+  await app.register(exerciseRoutes(exerciseService));
   await app.register(adminRoutes(foodService));
   await app.register(aiRoutes(aiService));
   if (chatService) {
