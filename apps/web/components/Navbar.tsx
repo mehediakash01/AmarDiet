@@ -21,6 +21,7 @@ export function Navbar() {
   const isAdmin = useNutritionStore((s) => s.isAdmin);
   const openMealScan = useNutritionStore((s) => s.openMealScan);
   const openQuickAdd = useNutritionStore((s) => s.openQuickAdd);
+  const subscription = useNutritionStore((s) => s.subscription);
 
   // Core navigation links (Admin is conditionally rendered only for verified admins)
   const navLinks = [
@@ -81,6 +82,14 @@ export function Navbar() {
 
           {/* Desktop Right Quick Actions */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {!subscription?.isSubscribed && (
+              <Link
+                href="/subscribe"
+                className="hidden sm:inline-flex min-h-[44px] items-center rounded-xl bg-cyan-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-cyan-500"
+              >
+                Subscribe
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => openMealScan('lunch')}

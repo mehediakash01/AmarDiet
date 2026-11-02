@@ -33,14 +33,18 @@ export function SubscriptionCard() {
   const handleInitiate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!phone.trim()) {
-      toast('Please enter your Robi / Airtel phone number', 'error');
+      toast('Please enter your Robi / Circle phone number', 'error');
       return;
     }
 
     try {
       const res = await initiateSubscription(phone.trim());
       toast('OTP sent to your phone', 'success');
-      setReferenceNo(res.referenceNo || null);
+      if (res.referenceNo) {
+        window.localStorage.setItem('thali_subscription_reference', res.referenceNo);
+        window.location.assign('/verify-otp');
+        return;
+      }
       if (res.instruction) {
         setInstruction(res.instruction);
       }
@@ -87,7 +91,7 @@ export function SubscriptionCard() {
             <h3 className="font-semibold text-sm text-text-primary tracking-tight">
               Bdapps Daily Subscription
             </h3>
-            <p className="text-[11px] text-text-muted">Robi &amp; Airtel Carrier Billing</p>
+            <p className="text-[11px] text-text-muted">Robi &amp; Circle Carrier Billing</p>
           </div>
         </div>
 
@@ -95,7 +99,7 @@ export function SubscriptionCard() {
         {isActive ? (
           <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Active (৳2/day)</span>
+            <span>Active (৳4/day)</span>
           </span>
         ) : isSuspended ? (
           <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30">
@@ -119,7 +123,7 @@ export function SubscriptionCard() {
                 Premium Access Active
               </p>
               <p className="text-emerald-400/80 leading-relaxed text-[11px]">
-                Your subscription is active via Bdapps. Billed at ৳2.00/day directly through your carrier.
+                Your subscription is active via Bdapps. Billed at ৳4.00/day incl. VAT, SC and SD through your carrier.
                 {subscription?.phone && ` Linked number: ${subscription.phone}`}
               </p>
             </div>
@@ -148,7 +152,7 @@ export function SubscriptionCard() {
         <div className="space-y-3.5">
           <div className="text-xs text-text-secondary space-y-1.5 leading-relaxed">
             <p>
-              Subscribe for <span className="font-semibold text-text-primary">৳2.00 / day</span> via Robi or Airtel carrier billing to unlock full features, AI scans, and advanced nutrition insights.
+              Subscribe for <span className="font-semibold text-text-primary">৳4.00 / day incl. VAT + SC + SD</span> via Robi or Circle carrier billing to unlock full features, AI scans, and advanced nutrition insights.
             </p>
           </div>
 

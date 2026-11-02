@@ -379,7 +379,7 @@ export default function HomePage() {
               <span>{t.langToggleLabel}</span>
             </button>
             <Link
-              href="/onboarding"
+              href="/subscribe"
               className="hidden sm:inline-block bg-accent hover:bg-accent-hover text-surface text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
             >
               {t.hero.ctaPrimary}
@@ -401,7 +401,7 @@ export default function HomePage() {
             <p className="text-base sm:text-lg text-muted mb-8 max-w-lg">{t.hero.subhead}</p>
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
-                href="/onboarding"
+                href="/subscribe"
                 className="bg-accent hover:bg-accent-hover text-surface font-semibold px-6 py-3 rounded-lg text-center transition-colors"
               >
                 {t.hero.ctaPrimary}
@@ -497,7 +497,7 @@ export default function HomePage() {
               </div>
             </div>
             <Link
-              href="/onboarding"
+              href="/subscribe"
               className="bg-primary hover:bg-primary-hover text-surface font-semibold px-5 py-2.5 rounded-lg whitespace-nowrap transition-colors"
             >
               {t.insight.cta}

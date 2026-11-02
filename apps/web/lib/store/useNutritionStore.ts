@@ -458,9 +458,9 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
           status: data.isSubscribed ? 'active' : 'inactive',
           isSubscribed: Boolean(data.isSubscribed),
           phone: data.subscriberId || phone,
-          plan: 'daily_2bdt',
-          carrier: 'Bdapps (Robi / Airtel)',
-          cost: 'BDT 2.00 / day + VAT/SD',
+          plan: 'daily_4bdt',
+          carrier: 'Bdapps (Robi / Circle)',
+          cost: 'BDT 4.00 / day incl. VAT + SC + SD',
           updatedAt: new Date().toISOString(),
         },
       });
