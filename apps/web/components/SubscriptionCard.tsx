@@ -18,8 +18,12 @@ export function SubscriptionCard() {
   const isSubscriptionLoading = useNutritionStore((s) => s.isSubscriptionLoading);
   const loadSubscription = useNutritionStore((s) => s.loadSubscription);
   const initiateSubscription = useNutritionStore((s) => s.initiateSubscription);
+  const verifySubscription = useNutritionStore((s) => s.verifySubscription);
+  const unsubscribe = useNutritionStore((s) => s.unsubscribe);
 
   const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [referenceNo, setReferenceNo] = useState<string | null>(null);
   const [instruction, setInstruction] = useState<string | null>(null);
 
   const status = subscription?.status || 'inactive';
@@ -35,12 +39,34 @@ export function SubscriptionCard() {
 
     try {
       const res = await initiateSubscription(phone.trim());
-      toast('Subscription prompt initiated on your phone', 'success');
+      toast('OTP sent to your phone', 'success');
+      setReferenceNo(res.referenceNo || null);
       if (res.instruction) {
         setInstruction(res.instruction);
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Could not initiate subscription', 'error');
+    }
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!referenceNo || !otp.trim()) return;
+    try {
+      const result = await verifySubscription(referenceNo, otp.trim());
+      setInstruction(result.instruction || null);
+      toast(result.verified ? 'OTP accepted. Waiting for carrier confirmation.' : 'OTP rejected', result.verified ? 'success' : 'error');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not verify OTP', 'error');
+    }
+  };
+
+  const handleUnsubscribe = async () => {
+    try {
+      await unsubscribe();
+      toast('Unsubscribe request sent', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not unsubscribe', 'error');
     }
   };
 
@@ -109,6 +135,13 @@ export function SubscriptionCard() {
               <RefreshCw className={`w-3 h-3 ${isSubscriptionLoading ? 'animate-spin' : ''}`} />
               <span>Refresh Status</span>
             </button>
+            <button
+              onClick={handleUnsubscribe}
+              disabled={isSubscriptionLoading}
+              className="text-[11px] text-rose-400 hover:text-rose-300"
+            >
+              Unsubscribe
+            </button>
           </div>
         </div>
       ) : (
@@ -120,6 +153,7 @@ export function SubscriptionCard() {
           </div>
 
           {/* Form */}
+          {!referenceNo ? (
           <form onSubmit={handleInitiate} className="space-y-2.5">
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1">
@@ -148,6 +182,28 @@ export function SubscriptionCard() {
               </div>
             )}
           </form>
+          ) : (
+            <form onSubmit={handleVerify} className="space-y-2.5">
+              <p className="text-[11px] text-text-secondary">Enter OTP sent to {phone}.</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="OTP code"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  className="flex-1 bg-zinc-900 border border-border rounded-xl px-3.5 py-2 text-xs text-text-primary"
+                />
+                <button
+                  type="submit"
+                  disabled={isSubscriptionLoading || !otp.trim()}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold disabled:opacity-50"
+                >
+                  Verify OTP
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Verification notice */}
           <div className="flex items-start space-x-2 pt-1 text-[11px] text-text-muted">

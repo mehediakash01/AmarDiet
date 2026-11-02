@@ -7,11 +7,8 @@ import { InMemoryProfileRepository } from '../../apps/api/src/modules/profile/pr
 import { InMemoryFoodLogRepository } from '../../apps/api/src/modules/food-log/food-log.repository.js';
 import { InMemoryDietPlanRepository } from '../../apps/api/src/modules/diet-plan/diet-plan.repository.js';
 import { InMemoryWeightLogRepository } from '../../apps/api/src/modules/progress/progress.repository.js';
-import { InMemoryWebhookEventRepository } from '../../apps/api/src/modules/webhook/webhook-event.repository.js';
 import { InMemoryFoodRepository } from '../../apps/api/src/modules/food/food.repository.js';
 import { FoodService } from '../../apps/api/src/modules/food/food.service.js';
-import { BdappsClient } from '../../apps/api/src/infrastructure/bdapps/bdapps.client.js';
-import { SubscriptionService } from '../../apps/api/src/modules/subscription/subscription.service.js';
 import type { Goal } from '@thali/types';
 
 describe('Phase 9 Production Hardening: Full E2E Flow Across All 4 Goals', () => {
@@ -21,13 +18,8 @@ describe('Phase 9 Production Hardening: Full E2E Flow Across All 4 Goals', () =>
   let foodLogRepo: InMemoryFoodLogRepository;
   let dietPlanRepo: InMemoryDietPlanRepository;
   let weightLogRepo: InMemoryWeightLogRepository;
-  let webhookRepo: InMemoryWebhookEventRepository;
   let foodRepo: InMemoryFoodRepository;
   let foodService: FoodService;
-  let bdappsClient: BdappsClient;
-  let subscriptionService: SubscriptionService;
-
-  const validAppId = 'APP_000001';
 
   beforeEach(async () => {
     subscriberRepo = new InMemorySubscriberRepository();
@@ -35,13 +27,9 @@ describe('Phase 9 Production Hardening: Full E2E Flow Across All 4 Goals', () =>
     foodLogRepo = new InMemoryFoodLogRepository();
     dietPlanRepo = new InMemoryDietPlanRepository();
     weightLogRepo = new InMemoryWeightLogRepository();
-    webhookRepo = new InMemoryWebhookEventRepository();
     foodRepo = new InMemoryFoodRepository();
     foodService = new FoodService(foodRepo);
     await foodService.init();
-
-    bdappsClient = new BdappsClient({ applicationId: validAppId, password: 'test_password' });
-    subscriptionService = new SubscriptionService(subscriberRepo, webhookRepo, bdappsClient);
 
     app = await buildApp({
       subscriberRepo,
@@ -49,10 +37,7 @@ describe('Phase 9 Production Hardening: Full E2E Flow Across All 4 Goals', () =>
       foodLogRepo,
       dietPlanRepo,
       weightLogRepo,
-      webhookEventRepo: webhookRepo,
       foodService,
-      subscriptionService,
-      bdappsClient,
     });
   });
 
@@ -141,51 +126,11 @@ describe('Phase 9 Production Hardening: Full E2E Flow Across All 4 Goals', () =>
 
   for (const { goal, label, profileData, validateNutrition } of testGoals) {
     it(`executes full E2E lifecycle for goal: ${label} (${goal})`, async () => {
-      // ─── 1. SUBSCRIBE FLOW ───────────────────────────────────────────
-      // 1.1 Create initial anonymous subscriber record
+      // ─── 1. CREATE ANONYMOUS SUBSCRIBER ──────────────────────────────
       const sub = await subscriberRepo.create({
         id: randomUUID(),
-        status: 'inactive',
+        status: 'active',
       });
-
-      // 1.2 User initiates Bdapps subscription with phone
-      const initRes = await app.inject({
-        method: 'POST',
-        url: '/api/subscription/initiate',
-        payload: {
-          subscriberId: sub.id,
-          phone: '01812345678',
-        },
-      });
-      expect(initRes.statusCode).toBe(200);
-      const initBody = JSON.parse(initRes.body);
-      expect(initBody.status).toBe('inactive'); // Cannot self-activate!
-
-      // 1.3 Inbound Telco Webhook arrives from Bdapps confirming subscription
-      const webhookRes = await app.inject({
-        method: 'POST',
-        url: '/api/webhooks/bdapps',
-        payload: {
-          applicationId: validAppId,
-          subscriberId: sub.id,
-          eventId: `evt-sub-${goal}-${Date.now()}`,
-          status: 'REGISTER',
-        },
-      });
-      expect(webhookRes.statusCode).toBe(200);
-      const webhookBody = JSON.parse(webhookRes.body);
-      expect(webhookBody.status).toBe('active');
-
-      // 1.4 Verify subscription status check returns active
-      const statusRes = await app.inject({
-        method: 'GET',
-        url: `/api/subscription/status/${sub.id}`,
-      });
-      expect(statusRes.statusCode).toBe(200);
-      const statusBody = JSON.parse(statusRes.body);
-      expect(statusBody.isSubscribed).toBe(true);
-      expect(statusBody.status).toBe('active');
-
       // ─── 2. ONBOARDING & PROFILE CONFIGURATION ───────────────────────
       const profilePayload = {
         subscriberId: sub.id,

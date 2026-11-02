@@ -2,8 +2,8 @@
  * Real subscriber identity — replaces the previous hardcoded 'default-user'
  * that every visitor silently shared on the backend.
  *
- * No phone number, no OTP here (that's the Bdapps subscription feature,
- * built separately, later). This just gets each device a real,
+ * No phone number or OTP here. Subscription happens through the existing
+ * PHP service. This just gets each device a real,
  * server-backed subscriber record so profiles, plans, and progress are
  * genuinely per-person instead of one shared blob.
  */

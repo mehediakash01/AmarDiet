@@ -30,6 +30,9 @@ import {
   calculateMacroTargets,
 } from '@thali/nutrition-engine';
 
+const subscriptionApiUrl =
+  process.env.NEXT_PUBLIC_SUBSCRIPTION_API_URL || 'https://dietpal.sky-verse.live';
+
 export function computeLocalNutrition(profile: UserProfile): NutritionTargets {
   const bmrResult = calculateBMR({
     age: profile.age,
@@ -123,7 +126,12 @@ export interface NutritionState {
   loadSubscription: () => Promise<void>;
   initiateSubscription: (
     phone: string,
-  ) => Promise<{ success: boolean; message: string; instruction?: string }>;
+  ) => Promise<{ success: boolean; message: string; instruction?: string; referenceNo?: string }>;
+  verifySubscription: (
+    referenceNo: string,
+    otp: string,
+  ) => Promise<{ verified: boolean; instruction?: string }>;
+  unsubscribe: () => Promise<void>;
   loadLogsForDate: (date?: string) => Promise<void>;
   logFood: (food: FoodItem, quantity: number, unit: string, slot?: MealSlot) => Promise<void>;
   logQuickCalories: (calories: number, slot?: MealSlot) => Promise<void>;
@@ -428,48 +436,98 @@ export const useNutritionStore = create<NutritionState>((set, get) => ({
 
   loadSubscription: async () => {
     if (typeof window === 'undefined') return;
-    const { subscriberId } = get();
-    if (!subscriberId) return;
+    const phone = window.localStorage.getItem('thali_subscription_phone');
+    if (!phone) {
+      set({ subscription: null });
+      return;
+    }
 
     try {
       set({ isSubscriptionLoading: true });
-      const res = await fetch(`${getApiBaseUrl()}/api/subscription/status/${subscriberId}`);
-      if (res.ok) {
-        const data = await res.json();
-        set({ subscription: data });
-      }
+      const body = new URLSearchParams({ user_mobile: phone });
+      const res = await fetch(`${subscriptionApiUrl}/check_subscription.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Subscription status request failed');
+      set({
+        subscription: {
+          subscriberId: data.subscriberId || phone,
+          status: data.isSubscribed ? 'active' : 'inactive',
+          isSubscribed: Boolean(data.isSubscribed),
+          phone: data.subscriberId || phone,
+          plan: 'daily_2bdt',
+          carrier: 'Bdapps (Robi / Airtel)',
+          cost: 'BDT 2.00 / day + VAT/SD',
+          updatedAt: new Date().toISOString(),
+        },
+      });
     } catch (err) {
-      console.warn('Could not reach server for subscription status:', err);
+      console.warn('Could not reach PHP subscription API:', err);
     } finally {
       set({ isSubscriptionLoading: false });
     }
   },
 
   initiateSubscription: async (phone: string) => {
-    const { subscriberId } = get();
-    if (!subscriberId) throw new Error('Subscriber not initialized');
-
     set({ isSubscriptionLoading: true });
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/subscription/initiate`, {
+      const res = await fetch(`${subscriptionApiUrl}/send_otp.php`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriberId, phone }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ user_mobile: phone }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to initiate subscription');
+        throw new Error(data.message || data.error || 'Failed to initiate subscription');
       }
-
-      await get().loadSubscription();
+      if (!data.success || !data.referenceNo) {
+        throw new Error(data.message || data.statusDetail || 'OTP reference was not returned');
+      }
+      window.localStorage.setItem('thali_subscription_phone', phone);
       return {
         success: true,
         message: 'Subscription prompt sent to mobile device',
-        instruction: data.instruction,
+        instruction: 'Enter OTP sent to your phone, then verify.',
+        referenceNo: data.referenceNo,
       };
     } finally {
       set({ isSubscriptionLoading: false });
     }
+  },
+
+  verifySubscription: async (referenceNo: string, otp: string) => {
+    const res = await fetch(`${subscriptionApiUrl}/verify_otp.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ Otp: otp, referenceNo }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.statusCode !== 'S1000') {
+      throw new Error(data.statusDetail || data.message || 'OTP verification failed');
+    }
+    await get().loadSubscription();
+    return {
+      verified: true,
+      instruction: 'OTP accepted. Subscription status is being checked.',
+    };
+  },
+
+  unsubscribe: async () => {
+    const phone = window.localStorage.getItem('thali_subscription_phone');
+    if (!phone) throw new Error('No subscription phone is stored');
+    const res = await fetch(`${subscriptionApiUrl}/unsubscribe.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ user_mobile: phone }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || data.statusDetail || 'Unsubscribe failed');
+    }
+    await get().loadSubscription();
   },
 
   loadLogsForDate: async (date?: string) => {

@@ -113,7 +113,11 @@ pnpm db:seed
   subscriber/profile API — that's the next feature to tackle
 - Diet plan generation is still the same rule-based picker (no AI) — real
   scope of that decision is a separate conversation
-- Subscription/Bdapps still doesn't exist
+- Subscription is owned by the existing PHP service at
+  `https://dietpal.sky-verse.live`. The web app calls its `send_otp.php`,
+  `verify_otp.php`, `check_subscription.php`, and `unsubscribe.php`
+  endpoints directly. The Node API has no BDApps credentials or carrier
+  webhook integration.
 - The frontend's diet-plan fetch calls still use a hardcoded
   `localhost:3001` URL and fall back to a static mock plan if the request
   fails — needs an env-based API URL and the mock fallback needs to be
